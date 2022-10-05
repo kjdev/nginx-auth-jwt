@@ -1,0 +1,29 @@
+{
+  "keys": [
+    {
+      "use": "sig",
+      "kid": "test1",
+      "k": "dGVzdDEuc2VjcmV0",
+      "alg": "HS256"
+    },
+    {
+      "kty": "oct",
+      "use": "sig",
+      "k": "dGVzdDEuc2VjcmV0",
+      "alg": "HS256"
+    },
+    {
+      "kty": "oct",
+      "use": "sig",
+      "kid": "test1",
+      "alg": "HS256"
+    },
+    {
+      "kty": "oct",
+      "use": "sig",
+      "kid": "test1",
+      "k": "invalid",
+      "alg": "HS256"
+    }
+  ]
+}
