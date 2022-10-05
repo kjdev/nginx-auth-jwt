@@ -1,0 +1,47 @@
+name: test
+
+on: [push]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    if: contains(github.event.head_commit.message, 'ci skip') == false
+
+    container:
+      image: alpine:latest
+
+    steps:
+      - name: Prepare required command
+        run: |
+          apk --no-cache upgrade
+          apk --no-cache add curl gcc gd-dev geoip-dev git jansson-dev libxslt-dev linux-headers make musl-dev nginx openssl-dev pcre-dev perl-dev perl-utils zlib-dev
+          cpan -Ti Test::Nginx
+        env:
+          PERL_MM_USE_DEFAULT: 1
+
+      - name: Add github workspace as safe directory
+        run: git config --global --add safe.directory $GITHUB_WORKSPACE
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Build
+        run: |
+          nginx_version=$(nginx -v 2>&1 | sed 's/^[^0-9]*//')
+          curl -sL -o nginx-${nginx_version}.tar.gz http://nginx.org/download/nginx-${nginx_version}.tar.gz
+          tar xf nginx-${nginx_version}.tar.gz
+          cd nginx-${nginx_version}
+          opt=$(nginx -V 2>&1 | tail -1 | sed -e 's/configure arguments://' -e 's| --add-dynamic-module=[^ ]*||g')
+          ./configure ${opt} --add-dynamic-module=../
+          make
+          mkdir -p /usr/lib/nginx/modules
+          cp objs/ngx_http_auth_jwt_module.so /usr/lib/nginx/modules/
+
+      - name: Test
+        run: |
+          export TEST_NGINX_CONF_DIR=${PWD}/t/conf
+          export TEST_NGINX_DATA_DIR=${PWD}/t/data
+          prove -r t 2> /dev/null
+        env:
+          TEST_NGINX_LOAD_MODULES: /usr/lib/nginx/modules/ngx_http_auth_jwt_module.so
+          TEST_NGINX_SERVROOT: /tmp/servroot
