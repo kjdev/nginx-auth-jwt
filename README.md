@@ -1,5 +1,5 @@
-ngix-auth-jwt
-=============
+nginx-auth-jwt
+==============
 
 [JSON Web Token]: https://datatracker.ietf.org/doc/html/rfc7519
 [JSON Web Signature]: https://datatracker.ietf.org/doc/html/rfc7515
@@ -253,6 +253,11 @@ $jwt_claim_<name>
 
 Returns the value of a specified [JWT claim][].
 For arrays, the variable keeps a list of array elements separated by commas.
+
+Example
+-------
+
+- [OpenID Connect Authentication](example/README.md)
 
 
 TODO
