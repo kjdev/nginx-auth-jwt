@@ -9,6 +9,7 @@ FROM alpine:${ALPINE_VERSION} as nginx
 
 RUN apk --no-cache upgrade \
  && apk --no-cache add \
+      hiredis \
       jansson \
       nginx \
       nginx-mod-http-js \
