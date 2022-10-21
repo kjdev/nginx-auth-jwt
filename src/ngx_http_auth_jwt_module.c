@@ -1028,7 +1028,7 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
 
   /* validate signature */
   if (cf->validate_sig) {
-    const char *key = NULL;
+    const char *kid = NULL, *key = NULL;
 
     if (!ctx->keys) {
       ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
@@ -1036,12 +1036,18 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
       return NGX_ERROR;
     }
 
-    key = key_get(ctx->keys, jwt_get_header(ctx->jwt, "kid"));
+    kid = jwt_get_header(ctx->jwt, "kid");
+    if (kid == NULL) {
+      ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
+                    "auth_jwt: rejected due to missing JWT header kid");
+      return NGX_ERROR;
+    }
+
+    key = key_get(ctx->keys, kid);
     if (key == NULL) {
       ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
                     "auth_jwt: rejected due to missing signature key"
-                    ": kid=\"%s\"",
-                    jwt_get_header(ctx->jwt, "kid"));
+                    ": kid=\"%s\"", kid);
       return NGX_ERROR;
     }
 
