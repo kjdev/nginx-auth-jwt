@@ -380,3 +380,24 @@ X-Jwt-Claim-Exp: 4133862000.8889408
 X-Jwt-Claim-Iat: 1675046083.888941
 WWW-Authenticate: Bearer realm=""
 --- error_code: 200
+
+=== kid is not in the JWT header
+--- http_config
+include $TEST_NGINX_CONF_DIR/authorized_server.conf;
+--- config
+location / {
+  auth_jwt "";
+  auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
+  include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
+}
+--- request
+GET /
+--- more_headers
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJodHRwczovL3Rlc3QzLmlzc3Vlci5leGFtcGxlLmNvbSIsInN1YiI6InRlc3QzLmlkZW50aWZpZXIiLCJhdWQiOiJ0ZXN0My5hdWRpZW5jZS5leGFtcGxlLmNvbSIsImV4cCI6IDQxMzM4NjIwMDAsImlhdCI6IDE2NzUxMjA3MzIsImVtYWlsIjoidGVzdDNAZXhhbXBsZS5jb20ifQ.J2rN-QbckpUZ0PmoRT--AOtsOtpB1z-i049a1iKzv58Ax2qH5Vutsc1xMbzwk5D8DpMWECEc5WqIfJSYHoH-oA
+--- response_headers
+X-Jwt-Claim-Iss: https://test3.issuer.example.com
+X-Jwt-Claim-Sub: test3.identifier
+X-Jwt-Claim-Aud: test3.audience.example.com
+X-Jwt-Claim-Email: test3@example.com
+WWW-Authenticate: Bearer realm=""
+--- error_code: 200
