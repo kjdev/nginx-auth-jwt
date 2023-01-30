@@ -355,3 +355,28 @@ X-Jwt-Claim-Aud:
 X-Jwt-Claim-Email:
 WWW-Authenticate:
 --- error_code: 200
+
+=== exp claim of decimal point
+--- http_config
+include $TEST_NGINX_CONF_DIR/authorized_server.conf;
+--- config
+location / {
+  auth_jwt "";
+  auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
+  include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
+  add_header 'X-Jwt-Claim-Exp' $jwt_claim_exp;
+  add_header 'X-Jwt-Claim-Iat' $jwt_claim_iat;
+}
+--- request
+GET /
+--- more_headers
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiIsImtpZCI6InRlc3QxIn0.eyJpc3MiOiJodHRwczovL3Rlc3QxLmlzc3Vlci5leGFtcGxlLmNvbSIsInN1YiI6InRlc3QxLmlkZW50aWZpZXIiLCJhdWQiOiJ0ZXN0MS5hdWRpZW5jZS5leGFtcGxlLmNvbSIsImV4cCI6IDQxMzM4NjIwMDAuODg4OTQxLCJpYXQiOiAxNjc1MDQ2MDgzLjg4ODk0MSwiZW1haWwiOiJ0ZXN0MUBleGFtcGxlLmNvbSJ9.c9ZHoWviBaQ8NiGhoWOx6IN9hsmJMBRztg22RHieEdM
+--- response_headers
+X-Jwt-Claim-Iss: https://test1.issuer.example.com
+X-Jwt-Claim-Sub: test1.identifier
+X-Jwt-Claim-Aud: test1.audience.example.com
+X-Jwt-Claim-Email: test1@example.com
+X-Jwt-Claim-Exp: 4133862000.8889408
+X-Jwt-Claim-Iat: 1675046083.888941
+WWW-Authenticate: Bearer realm=""
+--- error_code: 200
