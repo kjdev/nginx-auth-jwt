@@ -1013,6 +1013,28 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
     time_t exp, now;
 
     exp = (time_t)jwt_get_grant_int(ctx->jwt, "exp");
+    if (exp == -1) {
+      const char *var;
+
+      var = jwt_get_grants_json(ctx->jwt, "exp");
+      if (var) {
+        size_t n;
+        u_char *p;
+
+        p = (u_char *)ngx_strchr(var, '.');
+        if (p) {
+          n = p - (u_char *)var;
+        } else {
+          n = strlen(var);
+        }
+
+        exp = ngx_atotm((u_char *)var, n);
+      } else {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                      "auth_jwt: failed to get exp claim: \"%s\"", var);
+      }
+    }
+
     now = ngx_time();
 
     if (now > exp + cf->leeway) {
