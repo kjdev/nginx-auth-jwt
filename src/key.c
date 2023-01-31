@@ -3,6 +3,7 @@
 #include <openssl/opensslv.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
+#include <openssl/sha.h>
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
 #include <openssl/core_names.h>
 #include <openssl/param_build.h>
@@ -412,6 +413,52 @@ key_jwks_data_oct(const json_t *key)
   return decode;
 }
 
+static char *
+key_jwks_thumbprint(const char *kty, const json_t *json)
+{
+  char *var, *thumbprint = NULL;
+  unsigned char digest[SHA256_DIGEST_LENGTH + 1];
+  int len;
+
+  if (!kty || !json_is_object(json)) {
+    return NULL;
+  }
+
+  json_t *members;
+  members = json_object();
+
+  if (strcmp("RSA", kty) == 0) {
+    json_object_set_new(members, "e", json_copy(json_object_get(json, "e")));
+    json_object_set_new(members, "kty", json_string(kty));
+    json_object_set_new(members, "n", json_copy(json_object_get(json, "n")));
+  } else if (strcmp("oct", kty) == 0) {
+    json_object_set_new(members, "k", json_copy(json_object_get(json, "k")));
+    json_object_set_new(members, "kty", json_string(kty));
+  } else if (strcmp("EC", kty) == 0) {
+    json_object_set_new(members, "crv",
+                        json_copy(json_object_get(json, "crv")));
+    json_object_set_new(members, "kty", json_string(kty));
+    json_object_set_new(members, "x", json_copy(json_object_get(json, "x")));
+    json_object_set_new(members, "y", json_copy(json_object_get(json, "y")));
+  } else {
+    return NULL;
+  }
+
+  var = json_dumps(members, JSON_COMPACT);
+
+  SHA256((unsigned char *)var, strlen(var), digest);
+
+  free(var);
+
+  json_delete(members);
+
+  digest[SHA256_DIGEST_LENGTH] = '\0';
+
+  thumbprint = (char *)jwt_b64_encode((char *)digest, &len);
+
+  return thumbprint;
+}
+
 int
 key_jwks_load(json_t **object, const json_t *json)
 {
@@ -439,11 +486,6 @@ key_jwks_load(json_t **object, const json_t *json)
       continue;
     }
 
-    kid = json_object_get(key, "kid");
-    if (!json_is_string(kid)) {
-      continue;
-    }
-
     kty = json_object_get(key, "kty");
     if (!json_is_string(kty)) {
       continue;
@@ -462,7 +504,18 @@ key_jwks_load(json_t **object, const json_t *json)
       continue;
     }
 
-    json_object_set_new(*object, json_string_value(kid), json_string(data));
+    kid = json_object_get(key, "kid");
+    if (json_is_string(kid)) {
+      json_object_set_new(*object, json_string_value(kid), json_string(data));
+    } else {
+      char *thumbprint = NULL;
+
+      thumbprint = key_jwks_thumbprint(type, key);
+      if (thumbprint) {
+        json_object_set_new(*object, thumbprint, json_string(data));
+        free(thumbprint);
+      }
+    }
 
     free(data);
  }
