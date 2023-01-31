@@ -398,7 +398,7 @@ X-Jwt-Claim-Sub:
 X-Jwt-Claim-Aud:
 X-Jwt-Claim-Email:
 --- error_code: 401
---- error_log: auth_jwt: rejected due to missing signature key: kid="test7"
+--- error_log: auth_jwt: rejected due to missing signature key or signature validate failure
 --- log_level: info
 
 === ES256 in key
@@ -484,7 +484,7 @@ X-Jwt-Claim-Sub:
 X-Jwt-Claim-Aud:
 X-Jwt-Claim-Email:
 --- error_code: 401
---- error_log: auth_jwt: rejected due to missing signature key: kid="test8"
+--- error_log: auth_jwt: rejected due to missing signature key or signature validate failure
 --- log_level: info
 
 === ES384 in key
@@ -570,7 +570,7 @@ X-Jwt-Claim-Sub:
 X-Jwt-Claim-Aud:
 X-Jwt-Claim-Email:
 --- error_code: 401
---- error_log: auth_jwt: rejected due to missing signature key: kid="test9"
+--- error_log: auth_jwt: rejected due to missing signature key or signature validate failure
 --- log_level: info
 
 === ES512 in key

@@ -94,7 +94,7 @@ X-Jwt-Claim-Sub:
 X-Jwt-Claim-Aud:
 X-Jwt-Claim-Email:
 --- error_code: 401
---- error_log: auth_jwt: rejected due to missing signature key: kid="test4"
+--- error_log: auth_jwt: rejected due to missing signature key or signature validate failure
 --- log_level: info
 
 === set variable valid
@@ -144,7 +144,7 @@ X-Jwt-Claim-Sub:
 X-Jwt-Claim-Aud:
 X-Jwt-Claim-Email:
 --- error_code: 401
---- error_log: auth_jwt: rejected due to missing signature key: kid="test3"
+--- error_log: auth_jwt: rejected due to missing signature key or signature validate failure
 --- log_level: info
 
 === valid location with set multiple on http, server and location
@@ -251,7 +251,7 @@ X-Jwt-Claim-Sub:
 X-Jwt-Claim-Aud:
 X-Jwt-Claim-Email:
 --- error_code: 401
---- error_log: auth_jwt: rejected due to missing signature key: kid="test4"
+--- error_log: auth_jwt: rejected due to missing signature key or signature validate failure
 --- log_level: info
 
 === valid overwrite with same kid on same directives
@@ -356,7 +356,7 @@ X-Jwt-Claim-Sub:
 X-Jwt-Claim-Aud:
 X-Jwt-Claim-Email:
 --- error_code: 401
---- error_log: auth_jwt: rejected due to missing signature key: kid="test1"
+--- error_log: auth_jwt: rejected due to missing signature key or signature validate failure
 --- log_level: info
 
 === invalid file
