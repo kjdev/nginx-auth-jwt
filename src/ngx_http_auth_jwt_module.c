@@ -981,6 +981,7 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
 {
   jwt_alg_t algorithm;
   const char *kid = NULL, *key = NULL;
+  json_t *var = NULL;
 
   if (!cf || !ctx) {
     ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
@@ -1076,27 +1077,25 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
     ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
                   "auth_jwt: rejected due to signature validate failure"
                   ": kid=\"%s\"", kid);
-  } else {
-    json_t *var = NULL;
+  }
 
-    json_object_foreach(ctx->keys, kid, var) {
-      if (!kid || !json_is_string(var)) {
-        continue;
-      }
-
-      key = json_string_value(var);
-
-      if (jwt_verify_sig(ctx->jwt, (char *)ctx->token, ctx->payload_len,
-                         (unsigned char *)key, strlen(key)) == 0) {
-        ctx->verified = 1;
-        return NGX_OK;
-      }
+  json_object_foreach(ctx->keys, kid, var) {
+    if (!kid || !json_is_string(var)) {
+      continue;
     }
 
-    ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
-                  "auth_jwt: rejected due to missing signature key "
-                  "or signature validate failure");
+    key = json_string_value(var);
+
+    if (jwt_verify_sig(ctx->jwt, (char *)ctx->token, ctx->payload_len,
+                       (unsigned char *)key, strlen(key)) == 0) {
+      ctx->verified = 1;
+      return NGX_OK;
+    }
   }
+
+  ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
+                "auth_jwt: rejected due to missing signature key "
+                "or signature validate failure");
 
   ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                 "auth_jwt: token: \"%s\"", (char *)ctx->token);
