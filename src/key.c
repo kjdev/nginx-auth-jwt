@@ -480,7 +480,7 @@ key_jwks_load(json_t **object, const json_t *json)
 
   json_array_foreach(keys, index, key) {
     const char *type;
-    char *data = NULL;
+    char *data = NULL, *thumbprint = NULL;
 
     if (!json_is_object(key)) {
       continue;
@@ -507,14 +507,13 @@ key_jwks_load(json_t **object, const json_t *json)
     kid = json_object_get(key, "kid");
     if (json_is_string(kid)) {
       json_object_set_new(*object, json_string_value(kid), json_string(data));
-    } else {
-      char *thumbprint = NULL;
+    }
 
-      thumbprint = key_jwks_thumbprint(type, key);
-      if (thumbprint) {
-        json_object_set_new(*object, thumbprint, json_string(data));
-        free(thumbprint);
-      }
+    thumbprint = key_jwks_thumbprint(type, key);
+
+    if (thumbprint) {
+      json_object_set_new(*object, thumbprint, json_string(data));
+      free(thumbprint);
     }
 
     free(data);
