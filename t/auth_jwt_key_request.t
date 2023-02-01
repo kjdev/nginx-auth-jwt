@@ -662,3 +662,26 @@ X-Jwt-Claim-Sub: test4.identifier
 X-Jwt-Claim-Aud: test4.audience.example.com
 X-Jwt-Claim-Email: test4@example.com
 --- error_code: 200
+
+=== invalid key for kid, refer elsewhere
+--- http_config
+include $TEST_NGINX_CONF_DIR/authorized_server.conf;
+--- config
+include $TEST_NGINX_CONF_DIR/jwt.conf;
+location / {
+  auth_jwt "" token=$test1_jwt;
+  auth_jwt_key_request /jwks.no_kid.json;
+  auth_jwt_key_request /test1.invalid.jwks;
+  include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
+}
+set $data_dir $TEST_NGINX_DATA_DIR;
+include $TEST_NGINX_CONF_DIR/key.conf;
+--- request
+GET /
+--- response_headers
+X-Jwt-Claim-Iss: https://test1.issuer.example.com
+X-Jwt-Claim-Sub: test1.identifier
+X-Jwt-Claim-Aud: test1.audience.example.com
+X-Jwt-Claim-Email: test1@example.com
+--- error_code: 200
+--- error_log: auth_jwt: rejected due to signature validate failure: kid="test1"
