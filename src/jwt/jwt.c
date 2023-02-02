@@ -1,20 +1,21 @@
-/* Copyright (C) 2015-2018 Ben Collins <ben@cyphre.com>
+/* Copyright (C) 2015-2022 Ben Collins <bcollins@maclara-llc.com>
    This file is part of the JWT C Library
 
    This Source Code Form is subject to the terms of the Mozilla Public
    License, v. 2.0. If a copy of the MPL was not distributed with this
    file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* Originally of https://github.com/benmcollins/libjwt */
+/* Originally of https://github.com/benmcollins/libjwt at v1.15.2 */
 
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <stdio.h>
 
-#include "base64.h"
 #include "jwt.h"
+
 #include "jwt-private.h"
+#include "base64.h"
 
 static jwt_malloc_t pfn_malloc = NULL;
 static jwt_realloc_t pfn_realloc = NULL;
@@ -332,24 +333,6 @@ static int get_js_bool(json_t *js, const char *key)
 	return val;
 }
 
-void *jwt_b64_encode(const char *src, int *ret_len)
-{
-	void *buf;
-
-	buf = jwt_malloc(strlen(src) * 2);
-	if (buf == NULL) {
-		return NULL;
-	}
-
-	jwt_Base64encode(buf, src, (int)strlen(src));
-
-	jwt_base64uri_encode(buf);
-
-	*ret_len = (int)strlen(buf);
-
-	return buf;
-}
-
 void *jwt_b64_decode(const char *src, int *ret_len)
 {
 	void *buf;
@@ -616,29 +599,6 @@ static int jwt_copy_key(jwt_t *jwt, const unsigned char *key, int key_len)
 	return ret;
 }
 
-int jwt_verify_sig(jwt_t *jwt, const char *token, unsigned int payload_len,
-		      const unsigned char *key, int key_len)
-{
-	int ret = EINVAL;
-
-	/* Copy the key over for verify_head. */
-	ret = jwt_copy_key(jwt, key, key_len);
-	if (ret) {
-		return ret;
-	}
-
-	ret = jwt_verify_head(jwt);
-	if (ret) {
-		return ret;
-	}
-
-	/* Check the signature */
-	const char *sig = token + (payload_len + 1);
-	ret = jwt_verify(jwt, token, payload_len, sig);
-
-	return ret;
-}
-
 int jwt_decode(jwt_t **jwt, const char *token, const unsigned char *key,
 	       int key_len)
 {
@@ -855,25 +815,6 @@ int jwt_del_grants(jwt_t *jwt, const char *grant)
 
 	return 0;
 }
-
-#ifdef _MSC_VER
-
-int jwt_del_grant(jwt_t *jwt, const char *grant);
-#pragma comment(linker, "/alternatename:jwt_del_grant=jwt_del_grants")
-
-#else
-
-#ifdef NO_WEAK_ALIASES
-int jwt_del_grant(jwt_t *jwt, const char *grant)
-{
-	return jwt_del_grants(jwt, grant);
-}
-#else
-int jwt_del_grant(jwt_t *jwt, const char *grant)
-	__attribute__ ((weak, alias ("jwt_del_grants")));
-#endif
-
-#endif /* _MSC_VER */
 
 const char *jwt_get_header(jwt_t *jwt, const char *header)
 {
@@ -1554,4 +1495,45 @@ unsigned int jwt_validate(jwt_t *jwt, jwt_valid_t *jwt_valid)
 	}
 
 	return jwt_valid->status;
+}
+
+/* Extends */
+void *jwt_b64_encode(const char *src, int *ret_len)
+{
+	void *buf;
+
+	buf = jwt_malloc(strlen(src) * 2);
+	if (buf == NULL) {
+		return NULL;
+	}
+
+	jwt_Base64encode(buf, src, (int)strlen(src));
+
+	jwt_base64uri_encode(buf);
+
+	*ret_len = (int)strlen(buf);
+
+	return buf;
+}
+
+int jwt_verify_sig(jwt_t *jwt, const char *token, unsigned int payload_len, const unsigned char *key, int key_len)
+{
+	int ret = EINVAL;
+
+	/* Copy the key over for verify_head. */
+	ret = jwt_copy_key(jwt, key, key_len);
+	if (ret) {
+		return ret;
+	}
+
+	ret = jwt_verify_head(jwt);
+	if (ret) {
+		return ret;
+	}
+
+	/* Check the signature */
+	const char *sig = token + (payload_len + 1);
+	ret = jwt_verify(jwt, token, payload_len, sig);
+
+	return ret;
 }

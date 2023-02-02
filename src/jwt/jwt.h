@@ -1,11 +1,11 @@
-/* Copyright (C) 2015-2018 Ben Collins <ben@cyphre.com>
+/* Copyright (C) 2015-2022 Ben Collins <bcollins@maclara-llc.com>
    This file is part of the JWT C Library
 
    This Source Code Form is subject to the terms of the Mozilla Public
    License, v. 2.0. If a copy of the MPL was not distributed with this
    file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* Originally of https://github.com/benmcollins/libjwt */
+/* Originally of https://github.com/benmcollins/libjwt at v1.15.2 */
 
 /**
  * @file jwt.h
@@ -354,19 +354,6 @@ JWT_EXPORT int jwt_add_grants_json(jwt_t *jwt, const char *json);
  * @return Returns 0 on success, valid errno otherwise.
  */
 JWT_EXPORT int jwt_del_grants(jwt_t *jwt, const char *grant);
-
-/**
- * @deprecated
- * Delete a grant from this JWT object.
- *
- * Deletes the named grant from this object. It is not an error if there
- * is no grant matching the passed name.
- *
- * @param jwt Pointer to a JWT object.
- * @param grant String containing the name of the grant to delete.
- * @return Returns 0 on success, valid errno otherwise.
- */
-DEPRECATED(JWT_EXPORT int jwt_del_grant(jwt_t *jwt, const char *grant));
 
 /** @} */
 
@@ -760,8 +747,8 @@ JWT_EXPORT unsigned int jwt_validate(jwt_t *jwt, jwt_valid_t *jwt_valid);
  *
  * @param jwt_valid Pointer to a JWT validation object pointer. Will be allocated
  *     on success.
+ * @param alg A valid jwt_alg_t specifier.
  * @return 0 on success, valid errno otherwise.
- *
  */
 JWT_EXPORT int jwt_valid_new(jwt_valid_t **jwt_valid, jwt_alg_t alg);
 
@@ -928,7 +915,7 @@ JWT_EXPORT char* jwt_valid_get_grants_json(jwt_valid_t *jwt_valid, const char *g
  *    is NULL, then all grants are deleted.
  * @return Returns 0 on success, valid errno otherwise.
  */
-JWT_EXPORT int jwt_valid_del_grants(jwt_valid_t *jwt, const char *grant);
+JWT_EXPORT int jwt_valid_del_grants(jwt_valid_t *jwt_valid, const char *grant);
 
 /**
  * Set the time for which expires and not-before claims should be evaluated.

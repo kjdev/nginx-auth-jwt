@@ -1,11 +1,11 @@
-/* Copyright (C) 2015-2017 Ben Collins <ben@cyphre.com>
+/* Copyright (C) 2015-2022 Ben Collins <bcollins@maclara-llc.com>
    This file is part of the JWT C Library
 
    This Source Code Form is subject to the terms of the Mozilla Public
    License, v. 2.0. If a copy of the MPL was not distributed with this
    file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* Originally of https://github.com/benmcollins/libjwt */
+/* Originally of https://github.com/benmcollins/libjwt at v1.15.2 */
 
 #ifndef JWT_PRIVATE_H
 #define JWT_PRIVATE_H
@@ -35,12 +35,7 @@ void jwt_freemem(void *ptr);
 
 /* Helper routines. */
 void jwt_base64uri_encode(char *str);
-void *jwt_b64_encode(const char *src, int *ret_len);
 void *jwt_b64_decode(const char *src, int *ret_len);
-
-int jwt_parse(jwt_t **jwt, const char *token, unsigned int *len);
-int jwt_verify_sig(jwt_t *jwt, const char *token, unsigned int payload_len,
-		      const unsigned char *key, int key_len);
 
 /* These routines are implemented by the crypto backend. */
 int jwt_sign_sha_hmac(jwt_t *jwt, char **out, unsigned int *len,
@@ -52,5 +47,10 @@ int jwt_sign_sha_pem(jwt_t *jwt, char **out, unsigned int *len,
 		     const char *str, unsigned int str_len);
 
 int jwt_verify_sha_pem(jwt_t *jwt, const char *head, unsigned int head_len, const char *sig_b64);
+
+/* Extends */
+int jwt_parse(jwt_t **jwt, const char *token, unsigned int *len);
+void *jwt_b64_encode(const char *src, int *ret_len);
+int jwt_verify_sig(jwt_t *jwt, const char *token, unsigned int payload_len, const unsigned char *key, int key_len);
 
 #endif /* JWT_PRIVATE_H */
