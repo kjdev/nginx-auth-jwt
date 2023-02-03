@@ -1,5 +1,5 @@
 
-ARG ALPINE_VERSION=3.16
+ARG ALPINE_VERSION=3.17
 
 FROM ghcr.io/kjdev/nginx-auth-jwt as auth-jwt
 FROM ghcr.io/kjdev/nginx-keyval as keyval
@@ -39,6 +39,7 @@ COPY --chown=nginx:nginx openid_connect.js /etc/nginx/conf.d/
 ARG CLIENT_ID
 ARG CLIENT_SECRET
 ARG REDIRECT_URI=/_codexch
+ARG SERVER_PORT=8010
 
 RUN sed \
       -e "s@/_codexch@${REDIRECT_URI}@g" \
@@ -46,4 +47,7 @@ RUN sed \
  && sed \
       -e "s/CLIENT_ID/${CLIENT_ID}/" \
       -e "s/CLIENT_SECRET/${CLIENT_SECRET}/" \
-      -i /etc/nginx/http.d/openid_connect_configuration.conf
+      -i /etc/nginx/http.d/openid_connect_configuration.conf \
+ && sed \
+      -e "s/listen 8010/listen ${SERVER_PORT}/" \
+      -i /etc/nginx/http.d/frontend.conf
