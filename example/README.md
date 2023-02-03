@@ -59,26 +59,6 @@ Configuring
          js_content oidc.validateIdToken;
 ```
 
-#### Change the claim validation process
-
-> `jwt_claim_<name>` is undefined if it does not exist.
-
-`openid_connect.js`:
-
-``` diff
- function validateIdToken(r) {
-     // Check mandatory claims
-     var required_claims = ["iat", "iss", "sub"]; // aud is checked separately
-     var missing_claims = [];
-     for (var i in required_claims) {
--        if (r.variables["jwt_claim_" + required_claims[i]].length == 0 ) {
-+        var claim = r.variables["jwt_claim_" + required_claims[i]];
-+        if (claim == undefined || claim.length == 0 ) {
-             missing_claims.push(required_claims[i]);
-         }
-     }
-```
-
 #### Change `jwt_audience` to `jwt_claim_aud`
 
 > `jwt_claim_<name>` will get a comma-separated string.
@@ -101,8 +81,7 @@ Configuring
 +    var required_claims = ["iat", "iss", "sub", "aud"];
      var missing_claims = [];
      for (var i in required_claims) {
-         var claim = r.variables["jwt_claim_" + required_claims[i]];
-         if (claim == undefined || claim.length == 0 ) {
+         if (r.variables["jwt_claim_" + required_claims[i]].length == 0 ) {
              missing_claims.push(required_claims[i]);
          }
      }
@@ -129,9 +108,11 @@ Configuring
 ``` diff
  # Change timeout values to at least the validity period of each token type
 -keyval_zone zone=oidc_id_tokens:1M state=conf.d/oidc_id_tokens.json timeout=1h;
+-keyval_zone zone=oidc_access_tokens:1M state=conf.d/oidc_access_tokens.json timeout=1h;
 -keyval_zone zone=refresh_tokens:1M state=conf.d/refresh_tokens.json timeout=8h;
 -keyval_zone zone=oidc_pkce:128K timeout=90s; # Temporary storage for PKCE code verifier.
 +keyval_zone zone=oidc_id_tokens:1M;
++keyval_zone zone=oidc_access_tokens:1M;
 +keyval_zone zone=refresh_tokens:1M;
 +keyval_zone zone=oidc_pkce:128K; # Temporary storage for PKCE code verifier.
 ```
