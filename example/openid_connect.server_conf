@@ -27,9 +27,9 @@
     location = /_codexch {
         # This location is called by the IdP after successful authentication
         js_content oidc.codeExchange;
-        error_page 500 502 504 @oidc_error;
+        error_page 500 502 504 @oidc_error; 
     }
-
+   
     location = /_token {
         # This location is called by oidcCodeExchange(). We use the proxy_ directives
         # to construct the OpenID Connect token request, as per:

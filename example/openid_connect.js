@@ -1,6 +1,6 @@
 /*
  * JavaScript functions for providing OpenID Connect with NGINX Plus
- *
+ * 
  * Copyright (C) 2020 Nginx, Inc.
  */
 var newSession = false; // Used by oidcAuth() and validateIdToken()
@@ -51,7 +51,7 @@ function auth(r, afterSyncCheck) {
         r.return(302, r.variables.oidc_authz_endpoint + getAuthZArgs(r));
         return;
     }
-
+    
     // Pass the refresh token to the /_refresh location so that it can be
     // proxied to the IdP in exchange for a new id_token
     r.subrequest("/_refresh", "token=" + r.variables.refresh_token,
@@ -104,6 +104,11 @@ function auth(r, afterSyncCheck) {
                         // ID Token is valid, update keyval
                         r.log("OIDC refresh success, updating id_token for " + r.variables.cookie_auth_token);
                         r.variables.session_jwt = tokenset.id_token; // Update key-value store
+                        if (tokenset.access_token) {
+                            r.variables.access_token = tokenset.access_token;
+                        } else {
+                            r.variables.access_token = "";
+                        }
 
                         // Update refresh token (if we got a new one)
                         if (r.variables.refresh_token != tokenset.refresh_token) {
@@ -187,6 +192,11 @@ function codeExchange(r) {
                         // Add opaque token to keyval session store
                         r.log("OIDC success, creating session " + r.variables.request_id);
                         r.variables.new_session = tokenset.id_token; // Create key-value store entry
+                        if (tokenset.access_token) {
+                            r.variables.new_access_token = tokenset.access_token;
+                        } else {
+                            r.variables.new_access_token = "";
+                        }
                         r.headersOut["Set-Cookie"] = "auth_token=" + r.variables.request_id + "; " + r.variables.oidc_cookie_flags;
                         r.return(302, r.variables.redirect_base + r.variables.cookie_auth_redir);
                    }
@@ -201,16 +211,13 @@ function codeExchange(r) {
 
 function validateIdToken(r) {
     // Check mandatory claims
-    // CANGED: var required_claims = ["iat", "iss", "sub"]; // aud is checked separately
     var required_claims = ["iat", "iss", "sub", "aud"];
     var missing_claims = [];
     for (var i in required_claims) {
-        var claim = r.variables["jwt_claim_" + required_claims[i]];
-        if (claim == undefined || claim.length == 0 ) {
+        if (r.variables["jwt_claim_" + required_claims[i]].length == 0 ) {
             missing_claims.push(required_claims[i]);
         }
     }
-    // CANGED: if (r.variables.jwt_audience.length == 0) missing_claims.push("aud");
     if (missing_claims.length) {
         r.error("OIDC ID Token validation error: missing claim(s) " + missing_claims.join(" "));
         r.return(403);
@@ -226,10 +233,8 @@ function validateIdToken(r) {
     }
 
     // Audience matching
-    // CANGED: var aud = r.variables.jwt_audience.split(",");
     var aud = r.variables.jwt_claim_aud.split(",");
     if (!aud.includes(r.variables.oidc_client)) {
-        // CANGED: r.error("OIDC ID Token validation error: aud claim (" + r.variables.jwt_claim_aud + ") does not include configured $oidc_client (" + r.variables.oidc_client + ")");
         r.error("OIDC ID Token validation error: aud claim (" + r.variables.jwt_claim_aud + ") does not include configured $oidc_client (" + r.variables.oidc_client + ")");
         validToken = false;
     }
@@ -259,7 +264,8 @@ function validateIdToken(r) {
 
 function logout(r) {
     r.log("OIDC logout for " + r.variables.cookie_auth_token);
-    r.variables.session_jwt = "-";
+    r.variables.session_jwt   = "-";
+    r.variables.access_token  = "-";
     r.variables.refresh_token = "-";
     r.return(302, r.variables.oidc_logout_redirect);
 }
@@ -271,6 +277,10 @@ function getAuthZArgs(r) {
     var h = c.createHmac('sha256', r.variables.oidc_hmac_key).update(noncePlain);
     var nonceHash = h.digest('base64url');
     var authZArgs = "?response_type=code&scope=" + r.variables.oidc_scopes + "&client_id=" + r.variables.oidc_client + "&redirect_uri="+ r.variables.redirect_base + r.variables.redir_location + "&nonce=" + nonceHash;
+
+    if (r.variables.oidc_authz_extra_args) {
+        authZArgs += "&" + r.variables.oidc_authz_extra_args;
+    }
 
     r.headersOut['Set-Cookie'] = [
         "auth_redir=" + r.variables.request_uri + "; " + r.variables.oidc_cookie_flags,
@@ -297,5 +307,5 @@ function idpClientAuth(r) {
         return "code=" + r.variables.arg_code + "&code_verifier=" + r.variables.pkce_code_verifier;
     } else {
         return "code=" + r.variables.arg_code + "&client_secret=" + r.variables.oidc_client_secret;
-    }
+    }   
 }
