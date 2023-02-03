@@ -104,9 +104,6 @@ JWT may be also passed as a cookie or a part of a query string:
 The special value off cancels the effect of the auth_jwt directive inherited
 from the previous configuration level.
 
-> Note: JWT signature verification requires a "kid" (Key ID) parameter
-> in the header
-
 ```
 Syntax: auth_jwt_claim_set $variable name ...;
 Default: -
@@ -133,8 +130,6 @@ Specify `jwks` (default) or `keyval` as the file format.
 
 - jwks: [JSON Web Key Set][] format
 
-  > Note: JWK "kid" (Key ID) parameter is required
-
 - keyval: JSON in key-value format
 
   > Example: `{"kid": "-----BEGIN PUBLIC KEY-----\nxx.."}`
@@ -159,8 +154,6 @@ Parameter value can contain variables.
 Specify `jwks` (default) or `keyval` as the key format.
 
 - jwks: [JSON Web Key Set][] format
-
-  > Note: JWK "kid" (Key ID) parameter is required
 
 - keyval: JSON in key-value format
 
@@ -264,10 +257,6 @@ TODO
 ----
 
 - [ ] `auth_jwt_key_request` in subrequests (nested in-memory subrequest)
-- [ ] Duplicate kid support
-  - Currently overwritten
-- [ ] Do not require kid
-- [ ] Improve since OpenSSL 3.0
 - Support JWK key type
   - [ ] EC (ES256, ES384, ES512)
 - Support algorithms
