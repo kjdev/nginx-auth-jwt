@@ -247,6 +247,12 @@ $jwt_claim_<name>
 Returns the value of a specified [JWT claim][].
 For arrays, the variable keeps a list of array elements separated by commas.
 
+```
+$jwt_claims
+```
+
+Returns the value of [JWT claim][] (JSON).
+
 Example
 -------
 
