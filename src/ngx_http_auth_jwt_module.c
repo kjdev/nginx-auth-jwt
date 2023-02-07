@@ -12,6 +12,7 @@
 
 static ngx_int_t ngx_http_auth_jwt_variable_claim(ngx_http_request_t *r,  ngx_http_variable_value_t *v, uintptr_t data);
 static ngx_int_t ngx_http_auth_jwt_variable_header(ngx_http_request_t *r,  ngx_http_variable_value_t *v, uintptr_t data);
+static ngx_int_t ngx_http_auth_jwt_variable_claims(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data);
 
 static char *ngx_http_auth_jwt_conf_set_token_variable(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static char *ngx_http_auth_jwt_conf_set_claim(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
@@ -102,6 +103,12 @@ static ngx_http_variable_t ngx_http_auth_jwt_vars[] = {
     ngx_http_auth_jwt_variable_claim,
     0,
     NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_PREFIX,
+    0 },
+  { ngx_string("jwt_claims"),
+    NULL,
+    ngx_http_auth_jwt_variable_claims,
+    0,
+    NGX_HTTP_VAR_NOCACHEABLE,
     0 },
   ngx_http_null_variable
 };
@@ -206,16 +213,22 @@ ngx_http_auth_jwt_strdup(ngx_pool_t *pool, u_char *data, size_t len)
   return dst;
 }
 
+typedef enum {
+  NGX_HTTP_AUTH_JWT_VARIABLE_HEADER = 0,
+  NGX_HTTP_AUTH_JWT_VARIABLE_CLAIM,
+  NGX_HTTP_AUTH_JWT_VARIABLE_CLAIMS
+} ngx_http_auth_jwt_variable_find_t;
+
 static ngx_int_t
 ngx_http_auth_jwt_variable_find(ngx_http_request_t *r,
                                 ngx_http_variable_value_t *v,
                                 const ngx_str_t *name,
-                                const ngx_flag_t use_claim)
+                                const ngx_http_auth_jwt_variable_find_t use)
 {
   char *str = NULL, *prefix = NULL;
   const char *value;
   size_t len, prefix_len;
-  u_char *data, *key, *var;
+  u_char *data, *key = NULL, *var;
   ngx_http_auth_jwt_ctx_t *ctx;
   auth_jwt_get jwt_get;
   auth_jwt_get_json jwt_get_json;
@@ -226,7 +239,7 @@ ngx_http_auth_jwt_variable_find(ngx_http_request_t *r,
     return NGX_OK;
   }
 
-  if (use_claim != 1) {
+  if (use == NGX_HTTP_AUTH_JWT_VARIABLE_HEADER) {
     prefix = NGX_HTTP_AUTH_JWT_HEADER_VAR_PREFIX;
     jwt_get = jwt_get_header;
     jwt_get_json = jwt_get_headers_json;
@@ -236,26 +249,30 @@ ngx_http_auth_jwt_variable_find(ngx_http_request_t *r,
       return NGX_OK;
     }
 
-    prefix = NGX_HTTP_AUTH_JWT_CLAIM_VAR_PREFIX;
+    if (use == NGX_HTTP_AUTH_JWT_VARIABLE_CLAIM) {
+      prefix = NGX_HTTP_AUTH_JWT_CLAIM_VAR_PREFIX;
+    }
     jwt_get = jwt_get_grant;
     jwt_get_json = jwt_get_grants_json;
   }
 
-  prefix_len = strlen(prefix);
-  len = name->len - prefix_len;
-  var = name->data + prefix_len;
+  if (prefix) {
+    prefix_len = strlen(prefix);
+    len = name->len - prefix_len;
+    var = name->data + prefix_len;
 
-  if (len == 0) {
-    v->not_found = 1;
-    return NGX_OK;
+    if (len == 0) {
+      v->not_found = 1;
+      return NGX_OK;
+    }
+
+    key = ngx_pcalloc(r->pool, len + 1);
+    if (key == NULL) {
+      return NGX_ERROR;
+    }
+
+    ngx_memcpy(key, var, len);
   }
-
-  key = ngx_pcalloc(r->pool, len + 1);
-  if (key == NULL) {
-    return NGX_ERROR;
-  }
-
-  ngx_memcpy(key, var, len);
 
   value = (*jwt_get)(ctx->jwt, (char *)key);
   if (value == NULL) {
@@ -267,19 +284,21 @@ ngx_http_auth_jwt_variable_find(ngx_http_request_t *r,
       return NGX_OK;
     }
 
-    len = strlen(str);
+    if (use == NGX_HTTP_AUTH_JWT_VARIABLE_CLAIM) {
+      len = strlen(str);
 
-    for (i = t = 0; i < len; i++) {
-      switch (str[i]) {
-        case '[':
-        case ']':
-        case '"':
-          break;
-        default:
-          str[t++] = str[i];
+      for (i = t = 0; i < len; i++) {
+        switch (str[i]) {
+          case '[':
+          case ']':
+          case '"':
+            break;
+          default:
+            str[t++] = str[i];
+        }
       }
+      str[t] = '\0';
     }
-    str[t] = '\0';
 
     value = str;
   }
@@ -311,14 +330,24 @@ static ngx_int_t
 ngx_http_auth_jwt_variable_header(ngx_http_request_t *r,
                                   ngx_http_variable_value_t *v, uintptr_t data)
 {
-  return ngx_http_auth_jwt_variable_find(r, v, (ngx_str_t *)data, 0);
+  return ngx_http_auth_jwt_variable_find(r, v, (ngx_str_t *)data,
+                                         NGX_HTTP_AUTH_JWT_VARIABLE_HEADER);
 }
 
 static ngx_int_t
 ngx_http_auth_jwt_variable_claim(ngx_http_request_t *r,
                                  ngx_http_variable_value_t *v, uintptr_t data)
 {
-  return ngx_http_auth_jwt_variable_find(r, v, (ngx_str_t *)data, 1);
+  return ngx_http_auth_jwt_variable_find(r, v, (ngx_str_t *)data,
+                                         NGX_HTTP_AUTH_JWT_VARIABLE_CLAIM);
+}
+
+static ngx_int_t
+ngx_http_auth_jwt_variable_claims(ngx_http_request_t *r,
+                                  ngx_http_variable_value_t *v, uintptr_t data)
+{
+  return ngx_http_auth_jwt_variable_find(r, v, (ngx_str_t *)data,
+                                         NGX_HTTP_AUTH_JWT_VARIABLE_CLAIMS);
 }
 
 static char *
