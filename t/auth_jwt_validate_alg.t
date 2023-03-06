@@ -379,7 +379,7 @@ X-Jwt-Claim-Email:
 --- error_log: auth_jwt: rejected due to unacceptable algorithm: equals expected=RS512 actual=HS512
 --- log_level: info
 
-=== ES256 in jwks (JWK key type EC not supported)
+=== ES256 in jwks
 --- http_config
 include $TEST_NGINX_CONF_DIR/authorized_server.conf;
 --- config
@@ -393,13 +393,11 @@ location / {
 --- request
 GET /
 --- response_headers
-X-Jwt-Claim-Iss:
-X-Jwt-Claim-Sub:
-X-Jwt-Claim-Aud:
-X-Jwt-Claim-Email:
---- error_code: 401
---- error_log: auth_jwt: rejected due to missing signature key or signature validate failure
---- log_level: info
+X-Jwt-Claim-Iss: https://test7.issuer.example.com
+X-Jwt-Claim-Sub: test7.identifier
+X-Jwt-Claim-Aud: test7.audience.example.com
+X-Jwt-Claim-Email: test7@example.com
+--- error_code: 200
 
 === ES256 in key
 --- http_config
@@ -465,7 +463,7 @@ X-Jwt-Claim-Email:
 --- error_log: auth_jwt: rejected due to unacceptable algorithm: equals expected=RS256 actual=ES256
 --- log_level: info
 
-=== ES384 in jwks (JWK key type EC not supported)
+=== ES384 in jwks
 --- http_config
 include $TEST_NGINX_CONF_DIR/authorized_server.conf;
 --- config
@@ -479,13 +477,11 @@ location / {
 --- request
 GET /
 --- response_headers
-X-Jwt-Claim-Iss:
-X-Jwt-Claim-Sub:
-X-Jwt-Claim-Aud:
-X-Jwt-Claim-Email:
---- error_code: 401
---- error_log: auth_jwt: rejected due to missing signature key or signature validate failure
---- log_level: info
+X-Jwt-Claim-Iss: https://test8.issuer.example.com
+X-Jwt-Claim-Sub: test8.identifier
+X-Jwt-Claim-Aud: test8.audience.example.com
+X-Jwt-Claim-Email: test8@example.com
+--- error_code: 200
 
 === ES384 in key
 --- http_config
@@ -551,7 +547,7 @@ X-Jwt-Claim-Email:
 --- error_log: auth_jwt: rejected due to unacceptable algorithm: equals expected=RS384 actual=ES384
 --- log_level: info
 
-=== ES512 in jwks (JWK key type EC not supported)
+=== ES512 in jwks
 --- http_config
 include $TEST_NGINX_CONF_DIR/authorized_server.conf;
 --- config
@@ -565,13 +561,11 @@ location / {
 --- request
 GET /
 --- response_headers
-X-Jwt-Claim-Iss:
-X-Jwt-Claim-Sub:
-X-Jwt-Claim-Aud:
-X-Jwt-Claim-Email:
---- error_code: 401
---- error_log: auth_jwt: rejected due to missing signature key or signature validate failure
---- log_level: info
+X-Jwt-Claim-Iss: https://test9.issuer.example.com
+X-Jwt-Claim-Sub: test9.identifier
+X-Jwt-Claim-Aud: test9.audience.example.com
+X-Jwt-Claim-Email: test9@example.com
+--- error_code: 200
 
 === ES512 in key
 --- http_config
