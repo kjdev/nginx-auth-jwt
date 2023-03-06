@@ -5,7 +5,7 @@
 
 #include "jwt/jwt.h"
 #include "jwt/jwt-private.h"
-#include "key.h"
+#include "jwk.h"
 
 #define NGX_HTTP_AUTH_JWT_CLAIM_VAR_PREFIX "jwt_claim_"
 #define NGX_HTTP_AUTH_JWT_HEADER_VAR_PREFIX "jwt_header_"
@@ -211,6 +211,141 @@ ngx_http_auth_jwt_strdup(ngx_pool_t *pool, u_char *data, size_t len)
   dst[len] = '\0';
 
   return dst;
+}
+
+static int
+ngx_http_auth_jwt_key_import(json_t **object,
+                             const jwks_t *jwks, const json_t *keyval)
+{
+  if (!jwks && !json_is_object(keyval)) {
+    return 1;
+  }
+
+  if (*object == NULL) {
+    *object = json_object();
+  }
+
+  if (jwks) {
+    const char *id, *key = NULL;
+    size_t key_len;
+
+    jwks_foreach_by(jwks, id) {
+      key = jwks_key_by(jwks, id, &key_len);
+      if (key == NULL || key_len == 0) {
+        continue;
+      }
+      json_object_set_new(*object, id, json_string_nocheck(key));
+    }
+  }
+
+  if (keyval) {
+    const char *key = NULL;
+    json_t *value = NULL;
+
+    json_object_foreach((json_t *)keyval, key, value) {
+      if (!key || !json_is_string(value)) {
+        continue;
+      }
+
+      json_object_set_new(*object, key, json_copy(value));
+    }
+  }
+
+  return 0;
+}
+
+static int
+ngx_http_auth_jwt_key_import_file(json_t **object, const char *path,
+                                  const int is_jwks)
+{
+  int rc;
+  json_t *keyval = NULL;
+  jwks_t *jwks = NULL;
+
+  if (path == NULL) {
+    return 1;
+  }
+
+  if (is_jwks) {
+    jwks = jwks_import_file(path);
+    if (jwks == NULL) {
+      return 1;
+    }
+  } else {
+    keyval = json_load_file(path, 0, NULL);
+    if (keyval == NULL) {
+      return 1;
+    }
+  }
+
+  rc = ngx_http_auth_jwt_key_import(object, jwks, keyval);
+
+  if (jwks) {
+    jwks_free(jwks);
+  }
+  if (keyval) {
+    json_delete(keyval);
+  }
+
+  return rc;
+}
+
+static int
+ngx_http_auth_jwt_key_import_string(json_t **object,
+                                    const char *input, const size_t len,
+                                    const int is_jwks)
+{
+  int rc;
+  json_t *keyval = NULL;
+  jwks_t *jwks = NULL;
+
+  if (input == NULL) {
+    return 1;
+  }
+
+  if (is_jwks) {
+    jwks = jwks_import_string(input, len);
+    if (jwks == NULL) {
+      return 1;
+    }
+  } else {
+    if (len == 0) {
+      keyval = json_loads(input, 0, NULL);
+    } else {
+      keyval = json_loadb(input, len, 0, NULL);
+    }
+    if (keyval == NULL) {
+      return 1;
+    }
+  }
+
+  rc = ngx_http_auth_jwt_key_import(object, jwks, keyval);
+
+  if (jwks) {
+    jwks_free(jwks);
+  }
+  if (keyval) {
+    json_delete(keyval);
+  }
+
+  return rc;
+}
+
+static const char *
+ngx_http_auth_jwt_key_get(const json_t *object, const char *kid)
+{
+  json_t *var = NULL;
+
+  if (!json_is_object(object) || kid == NULL) {
+    return NULL;
+  }
+
+  var = json_object_get(object, kid);
+  if (!json_is_string(var)) {
+    return NULL;
+  }
+
+  return json_string_value(var);
 }
 
 typedef enum {
@@ -516,20 +651,11 @@ ngx_http_auth_jwt_conf_set_key_file(ngx_conf_t *cf,
     return "failed to allocate file";
   }
 
-  if (jwks) {
-    if (key_jwks_load_file(&lcf->keys, file) != 0) {
-      ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-                         "\"%V\" directive failed to load jwks file: \"%s\"",
-                         &cmd->name, file);
-      return NGX_CONF_ERROR;
-    }
-  } else {
-    if (key_load_file(&lcf->keys, file) != 0) {
-      ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-                         "\"%V\" directive failed to load key file: \"%s\"",
-                         &cmd->name, file);
-      return NGX_CONF_ERROR;
-    }
+  if (ngx_http_auth_jwt_key_import_file(&lcf->keys, file, jwks) != 0) {
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                       "\"%V\" directive failed to load %s file: \"%s\"",
+                       &cmd->name, (jwks ? "jwks" : "key"), file);
+    return NGX_CONF_ERROR;
   }
 
   return NGX_CONF_OK;
@@ -855,30 +981,15 @@ ngx_http_auth_jwt_key_request_handler(ngx_http_request_t *r,
 
   if (b != NULL) {
     size_t len;
-    json_t *json = NULL;
 
     len = b->last - b->pos;
 
-    json = json_loadb((char *)b->pos, len, 0, NULL);
-    if (json) {
-      if (key_request->jwks) {
-        if (key_jwks_load(&key_request->ctx->keys, json) != 0) {
-          ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                        "auth_jwt: failed to load jwks: \"%V\"",
-                        &r->uri);
-        }
-      } else {
-        if (key_load(&key_request->ctx->keys, json) != 0) {
-          ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                        "auth_jwt: failed to load key: \"%V\"",
-                        &r->uri);
-        }
-      }
-      json_delete(json);
-    } else {
+    if (ngx_http_auth_jwt_key_import_string(&key_request->ctx->keys,
+                                            (char *)b->pos, len,
+                                            key_request->jwks) != 0) {
       ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                    "auth_jwt: failed to load json: \"%V\"",
-                    &r->uri);
+                    "auth_jwt: failed to load %s: \"%V\"",
+                    (key_request->jwks ? "jwks" : "key"), &r->uri);
     }
   }
 
@@ -930,16 +1041,11 @@ ngx_http_auth_jwt_load_keys(ngx_http_request_t *r,
         continue;
       }
 
-      if (key_file[i].jwks) {
-        if (key_jwks_load_file(&ctx->keys, file) != 0) {
-          ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                        "auth_jwt: failed to load jwks file: \"%s\"", file);
-        }
-      } else {
-        if (key_load_file(&ctx->keys, file) != 0) {
-          ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                        "auth_jwt: failed to load key file: \"%s\"", file);
-        }
+      if (ngx_http_auth_jwt_key_import_file(&ctx->keys, file,
+                                            key_file[i].jwks) != 0) {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                      "auth_jwt: failed to load %s file: \"%s\"",
+                      (key_file[i].jwks ? "jwks" : "key"), file);
       }
     }
   }
@@ -1093,7 +1199,7 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
 
   kid = jwt_get_header(ctx->jwt, "kid");
   if (kid) {
-    key = key_get(ctx->keys, kid);
+    key = ngx_http_auth_jwt_key_get(ctx->keys, kid);
   }
 
   if (key) {
