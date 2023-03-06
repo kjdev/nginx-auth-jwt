@@ -454,7 +454,7 @@ X-Jwt-Claim-Email:
 --- error_code: 401
 --- error_log eval
 [
-  "auth_jwt: failed to load json: \"/invalid\"",
+  "auth_jwt: failed to load jwks: \"/invalid\"",
   "auth_jwt: rejected due to without signature key"
 ]
 --- log_level: info
