@@ -263,7 +263,5 @@ TODO
 ----
 
 - [ ] `auth_jwt_key_request` in subrequests (nested in-memory subrequest)
-- Support JWK key type
-  - [ ] EC (ES256, ES384, ES512)
 - Support algorithms
   - [ ] EdDSA (JWK key type: OKP)
