@@ -33,16 +33,20 @@ static ngx_int_t ngx_http_auth_jwt_handler(ngx_http_request_t *r, ngx_int_t phas
 typedef struct {
   ngx_int_t token_variable;
   ngx_array_t *claim_vars;
-  ngx_array_t *key_files;
-  ngx_array_t *key_requests;
   time_t leeway;
   ngx_int_t phase;
-  ngx_uint_t validate_alg;
-  ngx_flag_t validate_exp;
-  ngx_flag_t validate_sig;
   ngx_flag_t enabled;
   ngx_str_t realm;
-  json_t *keys;
+  struct {
+    ngx_array_t *files;
+    ngx_array_t *requests;
+    json_t *vars;
+  } key;
+  struct {
+    ngx_uint_t alg;
+    ngx_flag_t exp;
+    ngx_flag_t sig;
+  } validate;
 } ngx_http_auth_jwt_loc_conf_t;
 
 typedef struct {
@@ -154,19 +158,19 @@ static ngx_command_t ngx_http_auth_jwt_commands[] = {
     NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
     ngx_conf_set_enum_slot,
     NGX_HTTP_LOC_CONF_OFFSET,
-    offsetof(ngx_http_auth_jwt_loc_conf_t, validate_alg),
+    offsetof(ngx_http_auth_jwt_loc_conf_t, validate.alg),
     &ngx_http_auth_jwt_algs },
   { ngx_string("auth_jwt_validate_exp"),
     NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
     ngx_conf_set_flag_slot,
     NGX_HTTP_LOC_CONF_OFFSET,
-    offsetof(ngx_http_auth_jwt_loc_conf_t, validate_exp),
+    offsetof(ngx_http_auth_jwt_loc_conf_t, validate.exp),
     NULL },
   { ngx_string("auth_jwt_validate_sig"),
     NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
     ngx_conf_set_flag_slot,
     NGX_HTTP_LOC_CONF_OFFSET,
-    offsetof(ngx_http_auth_jwt_loc_conf_t, validate_sig),
+    offsetof(ngx_http_auth_jwt_loc_conf_t, validate.sig),
     NULL },
   ngx_null_command
 };
@@ -613,14 +617,14 @@ ngx_http_auth_jwt_conf_set_key_file(ngx_conf_t *cf,
     ngx_str_t var;
     ngx_http_auth_jwt_key_file_t *key_file;
 
-    if (lcf->key_files == NULL) {
-      lcf->key_files = ngx_array_create(cf->pool, 1, sizeof(*key_file));
-      if (lcf->key_files == NULL) {
+    if (lcf->key.files == NULL) {
+      lcf->key.files = ngx_array_create(cf->pool, 1, sizeof(*key_file));
+      if (lcf->key.files == NULL) {
         return "failed to allocate";
       }
     }
 
-    key_file = ngx_array_push(lcf->key_files);
+    key_file = ngx_array_push(lcf->key.files);
     if (key_file == NULL) {
       return "failed to allocate item";
     }
@@ -651,7 +655,7 @@ ngx_http_auth_jwt_conf_set_key_file(ngx_conf_t *cf,
     return "failed to allocate file";
   }
 
-  if (ngx_http_auth_jwt_key_import_file(&lcf->keys, file, jwks) != 0) {
+  if (ngx_http_auth_jwt_key_import_file(&lcf->key.vars, file, jwks) != 0) {
     ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
                        "\"%V\" directive failed to load %s file: \"%s\"",
                        &cmd->name, (jwks ? "jwks" : "key"), file);
@@ -685,14 +689,14 @@ ngx_http_auth_jwt_conf_set_key_request(ngx_conf_t *cf,
     }
   }
 
-  if (lcf->key_requests == NULL) {
-    lcf->key_requests = ngx_array_create(cf->pool, 1, sizeof(*key_request));
-    if (lcf->key_requests == NULL) {
+  if (lcf->key.requests == NULL) {
+    lcf->key.requests = ngx_array_create(cf->pool, 1, sizeof(*key_request));
+    if (lcf->key.requests == NULL) {
       return "failed to allocate";
     }
   }
 
-  key_request = ngx_array_push(lcf->key_requests);
+  key_request = ngx_array_push(lcf->key.requests);
   if (key_request == NULL) {
     return "failed to allocate item";
   }
@@ -772,16 +776,16 @@ ngx_http_auth_jwt_create_loc_conf(ngx_conf_t *cf)
 
   conf->token_variable = NGX_CONF_UNSET;
   conf->claim_vars = NGX_CONF_UNSET_PTR;
-  conf->key_files = NULL;
-  conf->key_requests = NULL;
   conf->leeway = NGX_CONF_UNSET;
   conf->phase = NGX_CONF_UNSET;
-  conf->validate_alg = NGX_CONF_UNSET_UINT;
-  conf->validate_exp = NGX_CONF_UNSET;
-  conf->validate_sig = NGX_CONF_UNSET;
+  conf->key.files = NULL;
+  conf->key.requests = NULL;
+  conf->key.vars = NULL;
+  conf->validate.alg = NGX_CONF_UNSET_UINT;
+  conf->validate.exp = NGX_CONF_UNSET;
+  conf->validate.sig = NGX_CONF_UNSET;
 
   conf->enabled = NGX_CONF_UNSET;
-  conf->keys = NULL;
 
   return conf;
 }
@@ -796,19 +800,19 @@ ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
                        prev->token_variable, NGX_CONF_UNSET);
   ngx_conf_merge_ptr_value(conf->claim_vars, prev->claim_vars, NULL);
 
-  if (conf->key_files == NULL || conf->key_files->nelts == 0) {
-    conf->key_files = prev->key_files;
-  } else if (prev->key_files && prev->key_files->nelts) {
+  if (conf->key.files == NULL || conf->key.files->nelts == 0) {
+    conf->key.files = prev->key.files;
+  } else if (prev->key.files && prev->key.files->nelts) {
     ngx_uint_t i, len, n;
     ngx_http_auth_jwt_key_file_t *key_file, *var;
 
-    len = conf->key_files->nelts;
-    n = prev->key_files->nelts;
+    len = conf->key.files->nelts;
+    n = prev->key.files->nelts;
 
-    ngx_array_push_n(conf->key_files, n);
+    ngx_array_push_n(conf->key.files, n);
 
-    key_file = conf->key_files->elts;
-    var = prev->key_files->elts;
+    key_file = conf->key.files->elts;
+    var = prev->key.files->elts;
 
     for (i = 0; i < len; i++) {
       key_file[n + i] = key_file[i];
@@ -818,19 +822,19 @@ ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
     }
   }
 
-  if (conf->key_requests == NULL || conf->key_requests->nelts == 0) {
-    conf->key_requests = prev->key_requests;
-  } else if (prev->key_requests && prev->key_requests->nelts) {
+  if (conf->key.requests == NULL || conf->key.requests->nelts == 0) {
+    conf->key.requests = prev->key.requests;
+  } else if (prev->key.requests && prev->key.requests->nelts) {
     ngx_uint_t i, len, n;
     ngx_http_auth_jwt_key_request_t *key_request, *var;
 
-    len = conf->key_requests->nelts;
-    n = prev->key_requests->nelts;
+    len = conf->key.requests->nelts;
+    n = prev->key.requests->nelts;
 
-    ngx_array_push_n(conf->key_requests, n);
+    ngx_array_push_n(conf->key.requests, n);
 
-    key_request = conf->key_requests->elts;
-    var = prev->key_requests->elts;
+    key_request = conf->key.requests->elts;
+    var = prev->key.requests->elts;
 
     for (i = 0; i < len; i++) {
       key_request[n + i] = key_request[i];
@@ -844,19 +848,19 @@ ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
 
   ngx_conf_merge_value(conf->phase, prev->phase, NGX_HTTP_ACCESS_PHASE);
 
-  ngx_conf_merge_uint_value(conf->validate_alg,
-                            prev->validate_alg, NGX_CONF_UNSET_UINT);
-  ngx_conf_merge_value(conf->validate_exp, prev->validate_exp, 1);
-  ngx_conf_merge_value(conf->validate_sig, prev->validate_sig, 1);
+  ngx_conf_merge_uint_value(conf->validate.alg,
+                            prev->validate.alg, NGX_CONF_UNSET_UINT);
+  ngx_conf_merge_value(conf->validate.exp, prev->validate.exp, 1);
+  ngx_conf_merge_value(conf->validate.sig, prev->validate.sig, 1);
 
   ngx_conf_merge_value(conf->enabled, prev->enabled, 0);
   ngx_conf_merge_str_value(conf->realm, prev->realm, "");
 
-  if (prev->keys) {
-    if (conf->keys) {
-      json_object_update_missing(conf->keys, prev->keys);
+  if (prev->key.vars) {
+    if (conf->key.vars) {
+      json_object_update_missing(conf->key.vars, prev->key.vars);
     } else {
-      conf->keys = json_copy(prev->keys);
+      conf->key.vars = json_copy(prev->key.vars);
     }
   }
 
@@ -883,8 +887,8 @@ ngx_http_auth_jwt_exit_process(ngx_cycle_t *cycle)
 
   conf = (ngx_http_auth_jwt_loc_conf_t *)ctx->loc_conf[index];
 
-  if (conf && conf->keys) {
-    json_delete(conf->keys);
+  if (conf && conf->key.vars) {
+    json_delete(conf->key.vars);
   }
 }
 
@@ -1007,23 +1011,23 @@ ngx_http_auth_jwt_load_keys(ngx_http_request_t *r,
     return NGX_DECLINED;
   }
   /* do not run if not validating JWT signature */
-  if (!cf->validate_sig) {
+  if (!cf->validate.sig) {
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                   "auth_jwt: ignore load keys");
     return NGX_DECLINED;
   }
 
-  if (cf->keys) {
-    ctx->keys = json_copy(cf->keys);
+  if (cf->key.vars) {
+    ctx->keys = json_copy(cf->key.vars);
   }
 
-  if (cf->key_files != NULL) {
+  if (cf->key.files != NULL) {
     ngx_uint_t i;
     ngx_http_auth_jwt_key_file_t *key_file;
 
-    key_file = cf->key_files->elts;
+    key_file = cf->key.files->elts;
 
-    for (i = 0; i < cf->key_files->nelts; i++) {
+    for (i = 0; i < cf->key.files->nelts; i++) {
       char *file;
       ngx_http_variable_value_t  *v;
 
@@ -1050,7 +1054,7 @@ ngx_http_auth_jwt_load_keys(ngx_http_request_t *r,
     }
   }
 
-  if (cf->key_requests != NULL) {
+  if (cf->key.requests != NULL) {
     ngx_int_t flags = 0;
     ngx_http_post_subrequest_t *ps;
     ngx_http_request_t *sr;
@@ -1059,9 +1063,9 @@ ngx_http_auth_jwt_load_keys(ngx_http_request_t *r,
 
     flags = NGX_HTTP_SUBREQUEST_WAITED | NGX_HTTP_SUBREQUEST_IN_MEMORY;
 
-    key_request = cf->key_requests->elts;
+    key_request = cf->key.requests->elts;
 
-    for (i = 0; i < cf->key_requests->nelts; i++) {
+    for (i = 0; i < cf->key.requests->nelts; i++) {
       ngx_str_t url;
 
       key_request[i].ctx = ctx;
@@ -1127,16 +1131,16 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
   /* validate algorithm */
   algorithm = jwt_get_alg(ctx->jwt);
 
-  if (cf->validate_alg != NGX_CONF_UNSET_UINT) {
-    if (cf->validate_alg != algorithm) {
+  if (cf->validate.alg != NGX_CONF_UNSET_UINT) {
+    if (cf->validate.alg != algorithm) {
       ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
                     "auth_jwt: rejected due to unacceptable algorithm"
                     ": equals expected=%s actual=%s",
-                    jwt_alg_str(cf->validate_alg), jwt_alg_str(algorithm));
+                    jwt_alg_str(cf->validate.alg), jwt_alg_str(algorithm));
       return NGX_ERROR;
     }
     if (algorithm == JWT_ALG_NONE) {
-      cf->validate_sig = 0;
+      cf->validate.sig = 0;
     }
   } else if (algorithm == JWT_ALG_NONE) {
     /* rejected JWT_ALG_NONE as algorithm */
@@ -1146,7 +1150,7 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
   }
 
   /* validate exp claim */
-  if (cf->validate_exp) {
+  if (cf->validate.exp) {
     time_t exp, now;
 
     exp = (time_t)jwt_get_grant_int(ctx->jwt, "exp");
@@ -1188,7 +1192,7 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
   }
 
   /* validate signature */
-  if (!cf->validate_sig) {
+  if (!cf->validate.sig) {
     ctx->verified = 1;
     return NGX_OK;
   }
