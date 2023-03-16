@@ -1151,7 +1151,7 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
 
     exp = (time_t)jwt_get_grant_int(ctx->jwt, "exp");
     if (exp == -1) {
-      const char *var;
+      char *var;
 
       var = jwt_get_grants_json(ctx->jwt, "exp");
       if (var) {
@@ -1166,6 +1166,8 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
         }
 
         exp = ngx_atotm((u_char *)var, n);
+
+        free(var);
       } else {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                       "auth_jwt: failed to get exp claim: \"%s\"", var);
