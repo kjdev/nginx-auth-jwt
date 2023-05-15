@@ -2,9 +2,9 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
+#include <jansson.h>
 
 #include "jwt/jwt.h"
-#include "jwt/jwt-private.h"
 #include "jwk.h"
 
 #define NGX_HTTP_AUTH_JWT_CLAIM_VAR_PREFIX "jwt_claim_"
