@@ -525,7 +525,7 @@ static int jwt_verify_head(jwt_t *jwt)
 	return ret;
 }
 
-static int jwt_parse(jwt_t **jwt, const char *token, unsigned int *len)
+int jwt_parse(jwt_t **jwt, const char *token, unsigned int *len)
 {
 	char *head = NULL;
 	jwt_t *new = NULL;
@@ -1533,4 +1533,26 @@ unsigned int jwt_validate(jwt_t *jwt, jwt_valid_t *jwt_valid)
 	}
 
 	return jwt_valid->status;
+}
+
+int jwt_verify_sig(jwt_t *jwt, const char *token, unsigned int payload_len, const unsigned char *key, int key_len)
+{
+	int ret = EINVAL;
+
+	/* Copy the key over for verify_head. */
+	ret = jwt_copy_key(jwt, key, key_len);
+	if (ret) {
+		return ret;
+	}
+
+	ret = jwt_verify_head(jwt);
+	if (ret) {
+		return ret;
+	}
+
+	/* Check the signature */
+	const char *sig = token + (payload_len + 1);
+	ret = jwt_verify(jwt, token, payload_len, sig);
+
+	return ret;
 }

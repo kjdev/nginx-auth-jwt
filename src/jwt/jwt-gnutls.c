@@ -117,7 +117,8 @@ int jwt_sign_sha_pem(jwt_t *jwt, char **out, unsigned int *len, const char *str,
 	};
 	gnutls_datum_t sig_dat, r, s;
 	int ret = 0, pk_alg;
-	int alg, adj;
+	int alg;
+	unsigned int adj;
 
 	/* Initialiaze for checking later. */
 	*out = NULL;

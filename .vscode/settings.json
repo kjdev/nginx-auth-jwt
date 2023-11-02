@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "*.excalidraw": "json",
+        "*.excalidrawlib": "json",
+        "*.schema": "yaml",
+        "ngx_http.h": "c",
+        "ngx_core.h": "c",
+        "jwt-private.h": "c"
+    }
+}

@@ -10,6 +10,6 @@ ngx_module_srcs="$ngx_addon_dir/src/jwt/base64.c \
                  $ngx_addon_dir/src/ngx_http_auth_jwt_module.c"
 ngx_module_deps=
 ngx_module_incs=
-ngx_module_libs="-lcrypto -ljansson -lssl"
+ngx_module_libs="-lgnutls -ljansson"
 
 . auto/module

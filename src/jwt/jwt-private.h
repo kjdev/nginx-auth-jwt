@@ -48,4 +48,8 @@ int jwt_sign_sha_pem(jwt_t *jwt, char **out, unsigned int *len,
 
 int jwt_verify_sha_pem(jwt_t *jwt, const char *head, unsigned int head_len, const char *sig_b64);
 
+int jwt_verify_sig(jwt_t *jwt, const char *token, unsigned int payload_len, const unsigned char *key, int key_len);
+
+int jwt_parse(jwt_t **jwt, const char *token, unsigned int *len);
+
 #endif /* JWT_PRIVATE_H */
