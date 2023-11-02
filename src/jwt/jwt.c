@@ -5,17 +5,16 @@
    License, v. 2.0. If a copy of the MPL was not distributed with this
    file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* Originally of https://github.com/benmcollins/libjwt at v1.15.2 */
-
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <stdio.h>
 
-#include "jwt.h"
+#include <jwt.h>
 
 #include "jwt-private.h"
 #include "base64.h"
+#include "config.h"
 
 static jwt_malloc_t pfn_malloc = NULL;
 static jwt_realloc_t pfn_realloc = NULL;
@@ -526,7 +525,7 @@ static int jwt_verify_head(jwt_t *jwt)
 	return ret;
 }
 
-int jwt_parse(jwt_t **jwt, const char *token, unsigned int *len)
+static int jwt_parse(jwt_t **jwt, const char *token, unsigned int *len)
 {
 	char *head = NULL;
 	jwt_t *new = NULL;
@@ -1249,6 +1248,9 @@ int jwt_valid_new(jwt_valid_t **jwt_valid, jwt_alg_t alg)
 
 	(*jwt_valid)->status = JWT_VALIDATION_ERROR;
 
+	(*jwt_valid)->nbf_leeway = 0;
+	(*jwt_valid)->exp_leeway = 0;
+
 	(*jwt_valid)->req_grants = json_object();
 	if (!(*jwt_valid)->req_grants) {
 		jwt_freemem(*jwt_valid);
@@ -1275,6 +1277,22 @@ unsigned int jwt_valid_get_status(jwt_valid_t *jwt_valid)
 		return JWT_VALIDATION_ERROR;
 
 	return jwt_valid->status;
+}
+
+time_t jwt_valid_get_nbf_leeway(jwt_valid_t *jwt_valid)
+{
+	if (!jwt_valid)
+		return EINVAL;
+
+	return jwt_valid->nbf_leeway;
+}
+
+time_t jwt_valid_get_exp_leeway(jwt_valid_t *jwt_valid)
+{
+	if (!jwt_valid)
+		return EINVAL;
+
+	return jwt_valid->exp_leeway;
 }
 
 int jwt_valid_add_grant(jwt_valid_t *jwt_valid, const char *grant, const char *val)
@@ -1405,6 +1423,26 @@ int jwt_valid_set_now(jwt_valid_t *jwt_valid, const time_t now)
 	return 0;
 }
 
+int jwt_valid_set_nbf_leeway(jwt_valid_t *jwt_valid, const time_t nbf_leeway)
+{
+	if (!jwt_valid)
+		return EINVAL;
+
+	jwt_valid->nbf_leeway = nbf_leeway;
+
+	return 0;
+}
+
+int jwt_valid_set_exp_leeway(jwt_valid_t *jwt_valid, const time_t exp_leeway)
+{
+	if (!jwt_valid)
+		return EINVAL;
+
+	jwt_valid->exp_leeway = exp_leeway;
+
+	return 0;
+}
+
 int jwt_valid_set_headers(jwt_valid_t *jwt_valid, int hdr)
 {
 	if (!jwt_valid)
@@ -1455,12 +1493,12 @@ unsigned int jwt_validate(jwt_t *jwt, jwt_valid_t *jwt_valid)
 
 	/* Validate expires */
 	t = get_js_int(jwt->grants, "exp");
-	if (jwt_valid->now && t != -1 && jwt_valid->now >= t)
+	if (jwt_valid->now && t != -1 && jwt_valid->now - jwt_valid->exp_leeway >= t)
 		jwt_valid->status |= JWT_VALIDATION_EXPIRED;
 
 	/* Validate not-before */
 	t = get_js_int(jwt->grants, "nbf");
-	if (jwt_valid->now && t != -1 && jwt_valid->now < t)
+	if (jwt_valid->now && t != -1 && jwt_valid->now + jwt_valid->nbf_leeway < t)
 		jwt_valid->status |= JWT_VALIDATION_TOO_NEW;
 
 	/* Validate replicated issuer */
@@ -1495,45 +1533,4 @@ unsigned int jwt_validate(jwt_t *jwt, jwt_valid_t *jwt_valid)
 	}
 
 	return jwt_valid->status;
-}
-
-/* Extends */
-void *jwt_b64_encode(const char *src, int *ret_len)
-{
-	void *buf;
-
-	buf = jwt_malloc(strlen(src) * 2);
-	if (buf == NULL) {
-		return NULL;
-	}
-
-	jwt_Base64encode(buf, src, (int)strlen(src));
-
-	jwt_base64uri_encode(buf);
-
-	*ret_len = (int)strlen(buf);
-
-	return buf;
-}
-
-int jwt_verify_sig(jwt_t *jwt, const char *token, unsigned int payload_len, const unsigned char *key, int key_len)
-{
-	int ret = EINVAL;
-
-	/* Copy the key over for verify_head. */
-	ret = jwt_copy_key(jwt, key, key_len);
-	if (ret) {
-		return ret;
-	}
-
-	ret = jwt_verify_head(jwt);
-	if (ret) {
-		return ret;
-	}
-
-	/* Check the signature */
-	const char *sig = token + (payload_len + 1);
-	ret = jwt_verify(jwt, token, payload_len, sig);
-
-	return ret;
 }

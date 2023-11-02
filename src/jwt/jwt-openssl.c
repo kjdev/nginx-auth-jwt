@@ -5,8 +5,6 @@
    License, v. 2.0. If a copy of the MPL was not distributed with this
    file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* Originally of https://github.com/benmcollins/libjwt at v1.15.2 */
-
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
@@ -17,13 +15,11 @@
 #include <openssl/buffer.h>
 #include <openssl/pem.h>
 #include <openssl/bn.h>
-#if OPENSSL_VERSION_NUMBER >= 0x30000000L
-#include <openssl/core_names.h>
-#endif
 
-#include "jwt.h"
+#include <jwt.h>
 
 #include "jwt-private.h"
+#include "config.h"
 
 /* Routines to support crypto in LibJWT using OpenSSL. */
 
@@ -254,26 +250,9 @@ int jwt_sign_sha_pem(jwt_t *jwt, char **out, unsigned int *len,
 	} else {
 		unsigned int degree, bn_len, r_len, s_len, buf_len;
 		unsigned char *raw_buf;
+		EC_KEY *ec_key;
 
 		/* For EC we need to convert to a raw format of R/S. */
-
-#if OPENSSL_VERSION_NUMBER >= 0x30000000L
-		char curve_name[64];
-		size_t curve_name_len = 0;
-		EC_GROUP *ecgroup;
-
-		if (!EVP_PKEY_get_utf8_string_param(pkey, OSSL_PKEY_PARAM_GROUP_NAME, curve_name, sizeof(curve_name), &curve_name_len))
-			SIGN_ERROR(ENOMEM);
-
-		ecgroup = EC_GROUP_new_by_curve_name(OBJ_txt2nid(curve_name));
-		if (ecgroup == NULL)
-			SIGN_ERROR(ENOMEM);
-
-		degree = EC_GROUP_get_degree(ecgroup);
-
-		EC_GROUP_free(ecgroup);
-#else
-		EC_KEY *ec_key;
 
 		/* Get the actual ec_key */
 		ec_key = EVP_PKEY_get1_EC_KEY(pkey);
@@ -283,7 +262,6 @@ int jwt_sign_sha_pem(jwt_t *jwt, char **out, unsigned int *len,
 		degree = EC_GROUP_get_degree(EC_KEY_get0_group(ec_key));
 
 		EC_KEY_free(ec_key);
-#endif
 
 		/* Get the sig from the DER encoded version. */
 		ec_sig = d2i_ECDSA_SIG(NULL, (const unsigned char **)&sig, slen);
@@ -400,28 +378,11 @@ int jwt_verify_sha_pem(jwt_t *jwt, const char *head, unsigned int head_len, cons
 	if (pkey_type == EVP_PKEY_EC) {
 		unsigned int degree, bn_len;
 		unsigned char *p;
+		EC_KEY *ec_key;
 
 		ec_sig = ECDSA_SIG_new();
 		if (ec_sig == NULL)
 			VERIFY_ERROR(ENOMEM);
-
-#if OPENSSL_VERSION_NUMBER >= 0x30000000L
-		char *curve_name[64];
-		size_t curve_name_len = 0;
-		EC_GROUP *ecgroup;
-
-		if (!EVP_PKEY_get_utf8_string_param(pkey, OSSL_PKEY_PARAM_GROUP_NAME, (char *)curve_name, sizeof(curve_name), &curve_name_len))
-			VERIFY_ERROR(ENOMEM);
-
-		ecgroup = EC_GROUP_new_by_curve_name(OBJ_txt2nid((char *)curve_name));
-		if (ecgroup == NULL)
-			VERIFY_ERROR(ENOMEM);
-
-	degree = EC_GROUP_get_degree(ecgroup);
-
-		EC_GROUP_free(ecgroup);
-#else
-		EC_KEY *ec_key;
 
 		/* Get the actual ec_key */
 		ec_key = EVP_PKEY_get1_EC_KEY(pkey);
@@ -431,10 +392,9 @@ int jwt_verify_sha_pem(jwt_t *jwt, const char *head, unsigned int head_len, cons
 		degree = EC_GROUP_get_degree(EC_KEY_get0_group(ec_key));
 
 		EC_KEY_free(ec_key);
-#endif
 
 		bn_len = (degree + 7) / 8;
-		if ((bn_len * 2) != (unsigned int)slen)
+		if ((bn_len * 2) != slen)
 			VERIFY_ERROR(EINVAL);
 
 		ec_sig_r = BN_bin2bn(sig, bn_len, NULL);
