@@ -1174,7 +1174,7 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
         free(var);
       } else {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                      "auth_jwt: failed to get exp claim: \"%s\"", var);
+                      "auth_jwt: failed to get exp claim");
       }
     }
 
