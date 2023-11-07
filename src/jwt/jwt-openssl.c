@@ -16,7 +16,7 @@
 #include <openssl/pem.h>
 #include <openssl/bn.h>
 
-#include <jwt.h>
+#include "jwt.h"
 
 #include "jwt-private.h"
 #include "config.h"

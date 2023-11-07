@@ -10,7 +10,7 @@
 #include <errno.h>
 #include <stdio.h>
 
-#include <jwt.h>
+#include "jwt.h"
 
 #include "jwt-private.h"
 #include "base64.h"

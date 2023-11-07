@@ -14,7 +14,7 @@
 #include <gnutls/x509.h>
 #include <gnutls/abstract.h>
 
-#include <jwt.h>
+#include "jwt.h"
 
 #include "jwt-private.h"
 #include "base64.h"

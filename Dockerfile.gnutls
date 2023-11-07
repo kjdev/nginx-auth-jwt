@@ -23,6 +23,7 @@ RUN apk --no-cache upgrade \
       pcre-dev \
       perl-dev \
       zlib-dev \
+      gnutls-dev \
  && nginx_version=$(nginx -v 2>&1 | sed 's/^[^0-9]*//') \
  && curl -sL -o nginx-${nginx_version}.tar.gz http://nginx.org/download/nginx-${nginx_version}.tar.gz \
  && tar -xf nginx-${nginx_version}.tar.gz \
@@ -30,6 +31,9 @@ RUN apk --no-cache upgrade \
 
 COPY config /build/
 COPY src/ /build/src/
+
+RUN sed -i 's/ngx_module_srcs="$openssl_srcs/ngx_module_srcs="$gnutls_srcs/' /build/config \
+ && sed -i 's/ngx_module_libs=$openssl_libs/ngx_module_libs=$gnutls_libs/' /build/config
 
 WORKDIR /build/nginx
 RUN nginx_opt=$(nginx -V 2>&1 | tail -1 | sed -e "s/configure arguments://" -e "s| --add-dynamic-module=[^ ]*||g") \
