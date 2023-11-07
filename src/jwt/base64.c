@@ -82,6 +82,8 @@
 /* Base64 encoder/decoder. Originally Apache file ap_base64.c
  */
 
+/* Originally of https://github.com/benmcollins/libjwt at v1.15.3 */
+
 #include <string.h>
 
 #include "base64.h"

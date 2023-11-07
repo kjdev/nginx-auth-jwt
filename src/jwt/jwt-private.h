@@ -5,20 +5,7 @@
    License, v. 2.0. If a copy of the MPL was not distributed with this
    file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* 
-	Updated 2023, Daniel Donoghue <oneofsomany@hotmail.com>
-
-	* Added the following function prototypes to jwt-private.h
-
-		int jwt_verify_sig(jwt_t *jwt, const char *token, unsigned int payload_len, 
-			const unsigned char *key, int key_len);
-
-		int jwt_parse(jwt_t **jwt, const char *token, unsigned int *len);
-
-	* Changed visibility fot the following static functions in jwt.c
-
-		static int jwt_parse(jwt_t **jwt, const char *token, unsigned int *len);
-*/
+/* Originally of https://github.com/benmcollins/libjwt at v1.15.3 */
 
 #ifndef JWT_PRIVATE_H
 #define JWT_PRIVATE_H
