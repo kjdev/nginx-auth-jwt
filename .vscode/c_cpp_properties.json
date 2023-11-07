@@ -5,7 +5,7 @@
             "includePath": [
                 "${workspaceFolder}/**",
                 "/usr/src/nginx-1.24.0/src/**",
-                "/usr/src/nginx-1.24.0/objs",
+                "/usr/src/nginx-1.24.0/objs"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/gcc",
