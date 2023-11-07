@@ -28,7 +28,7 @@ Dependency
 
 - [OpenSSL](http://www.openssl.org/) header and library _(when building for OpenSSL)_.
 
-- [GnuTLS](https://www.gnutls.org) header and library _(when building for a GunTLS)_.
+- [GnuTLS](https://www.gnutls.org) v3.7.10 (or newer) header and library _(when building for a GunTLS)_.
 
 
 Installation
@@ -68,7 +68,6 @@ $ cd nginx-${NGINX_VERSION}
 $ : "build module"
 $ ./configure --add-dynamic-module=../
 $ make && make install
-
 ```
 
 ### Docker
