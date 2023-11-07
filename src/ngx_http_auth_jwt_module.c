@@ -46,6 +46,7 @@ typedef struct {
     ngx_uint_t alg;
     ngx_flag_t exp;
     ngx_flag_t sig;
+    ngx_http_complex_value_t *aud;
   } validate;
 } ngx_http_auth_jwt_loc_conf_t;
 
@@ -160,6 +161,12 @@ static ngx_command_t ngx_http_auth_jwt_commands[] = {
     NGX_HTTP_LOC_CONF_OFFSET,
     offsetof(ngx_http_auth_jwt_loc_conf_t, validate.alg),
     &ngx_http_auth_jwt_algs },
+  { ngx_string("auth_jwt_validate_aud"),
+    NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+    ngx_http_set_complex_value_slot,
+    NGX_HTTP_LOC_CONF_OFFSET,
+    offsetof(ngx_http_auth_jwt_loc_conf_t, validate.aud),
+    NULL },
   { ngx_string("auth_jwt_validate_exp"),
     NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
     ngx_conf_set_flag_slot,
@@ -784,6 +791,7 @@ ngx_http_auth_jwt_create_loc_conf(ngx_conf_t *cf)
   conf->validate.alg = NGX_CONF_UNSET_UINT;
   conf->validate.exp = NGX_CONF_UNSET;
   conf->validate.sig = NGX_CONF_UNSET;
+  conf->validate.aud = NGX_CONF_UNSET_PTR;
 
   conf->enabled = NGX_CONF_UNSET;
 
@@ -852,6 +860,7 @@ ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
                             prev->validate.alg, NGX_CONF_UNSET_UINT);
   ngx_conf_merge_value(conf->validate.exp, prev->validate.exp, 1);
   ngx_conf_merge_value(conf->validate.sig, prev->validate.sig, 1);
+  ngx_conf_merge_ptr_value(conf->validate.aud, prev->validate.aud, NULL);
 
   ngx_conf_merge_value(conf->enabled, prev->enabled, 0);
   ngx_conf_merge_str_value(conf->realm, prev->realm, "");
@@ -1189,6 +1198,49 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
                     "auth_jwt: token: \"%s\"", (char *)ctx->token);
       return NGX_ERROR;
     }
+  }
+
+  /* validate aud claim */
+  if (cf->validate.aud) {
+    char *aud = NULL, *valid = NULL;
+    ngx_str_t expected = ngx_null_string;
+
+    ngx_http_complex_value(r, cf->validate.aud, &expected);
+    if (!expected.data || expected.len == 0) {
+      ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                    "auth_jwt: rejected due to missing expected aud");
+      return NGX_ERROR;
+    }
+
+    aud = jwt_get_grants_json(ctx->jwt, "aud");
+    if (!aud) {
+      ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                    "auth_jwt: rejected due to missing claim: aud");
+      return NGX_ERROR;
+    }
+
+    valid = ngx_strstr(aud, (char *)expected.data);
+    if (valid) {
+      size_t aud_len = strlen(aud);
+      size_t n = valid - aud;
+
+      if (n == 0 || n + expected.len >= aud_len) {
+        valid = NULL;
+      } else if (aud[n-1] != '"' || aud[n+expected.len] != '"') {
+        valid = NULL;
+      }
+    }
+
+    if (!valid) {
+      ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                    "auth_jwt: rejected due to not include"
+                    ": aud='%s': expected='%V'",
+                    aud, &expected);
+      free(aud);
+      return NGX_ERROR;
+    }
+
+    free(aud);
   }
 
   /* validate signature */
