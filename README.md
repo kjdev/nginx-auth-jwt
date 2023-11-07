@@ -16,6 +16,8 @@ The module can be used for
 [OpenID Connect](http://openid.net/specs/openid-connect-core-1_0.html)
 authentication.
 
+The module supports using either [OpenSSL](http://www.openssl.org/) or [GnuTLS](https://www.gnutls.org) for its cryptographic needs. 
+
 > This modules is heavenly inspired by the nginx original
 > [http_auth_jwt_module](http://nginx.org/en/docs/http/ngx_http_auth_jwt_module.html).
 
@@ -23,12 +25,16 @@ Dependency
 ----------
 
 - [jansson](http://www.digip.org/jansson/) header and library.
-- [OpenSSL](http://www.openssl.org/) header and library.
+
+- [OpenSSL](http://www.openssl.org/) header and library _(when building for OpenSSL)_.
+
+- [GnuTLS](https://www.gnutls.org) header and library _(when building for a GunTLS)_.
+
 
 Installation
 ------------
 
-### Build install
+### Build install (OpenSSL)
 
 ``` sh
 $ : "clone repository"
@@ -44,15 +50,39 @@ $ ./configure --add-dynamic-module=../
 $ make && make install
 ```
 
+### Build install (GnuTLS)
+
+A default build for nginx-auth-jwt will build against OpenSSL. To build for GnuTLS, instead, you should follow these instructions...
+
+``` sh
+$ : "clone repository"
+$ git clone https://github.com/kjdev/nginx-auth-jwt
+$ : "configure build for GnuTLS"
+$ sed -i 's/ngx_module_srcs="$openssl_srcs/ngx_module_srcs="$gnutls_srcs/' nginx-auth-jwt/config
+$ sed -i 's/ngx_module_libs=$openssl_libs/ngx_module_libs=$gnutls_libs/' nginx-auth-jwt/config
+$ : "get nginx source"
+$ NGINX_VERSION=1.x.x # specify nginx version
+$ wget http://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz
+$ tar -zxf nginx-${NGINX_VERSION}.tar.gz
+$ cd nginx-${NGINX_VERSION}
+$ : "build module"
+$ ./configure --add-dynamic-module=../
+$ make && make install
+
+```
+
 ### Docker
 
 ``` sh
-$ docker build -t nginx-auth-jwt .
+$ docker build -f Dockerfile.openssl -t nginx-auth-jwt .
 $ : "app.conf: Create nginx configuration"
 $ docker run -p 80:80 -v $PWD/app.conf:/etc/nginx/http.d/default.conf nginx-auth-jwt
 ```
 
 > Github package: ghcr.io/kjdev/nginx-auth-jwt
+
+To build a GnuTLS version of nginx-auth-jwt, replace `Dockerfile.openssl` with `Dockerfile.gnutls` above.
+
 
 Supported Algorithms
 --------------------
