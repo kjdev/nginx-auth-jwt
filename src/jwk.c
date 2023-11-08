@@ -242,13 +242,13 @@ static int jwk_calc_thumbprint(jwk_t *jwk)
 
   str = json_dumps(members, JSON_COMPACT);
 
-  SHA256((unsigned char *)str, strlen(str), digest);
+  SHA256((unsigned char *) str, strlen(str), digest);
 
   free(str);
 
   json_delete(members);
 
-  jwk->thumbprint = jwk_base64_urlencode((char *)digest, SHA256_DIGEST_LENGTH);
+  jwk->thumbprint = jwk_base64_urlencode((char *) digest, SHA256_DIGEST_LENGTH);
 
   return 0;
 }
@@ -604,7 +604,7 @@ static int jwk_key_ec_import(jwk_key_ec_t *ec, jwk_t *jwk)
 #else
   {
     int nid;
-    const unsigned char *pub_in = (unsigned char *)pub;
+    const unsigned char *pub_in = (unsigned char *) pub;
 
     if (strcmp("P-256", crv) == 0) {
       nid = NID_X9_62_prime256v1;

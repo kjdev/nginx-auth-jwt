@@ -288,7 +288,7 @@ ngx_http_auth_jwt_key_import(json_t **object,
     const char *key = NULL;
     json_t *value = NULL;
 
-    json_object_foreach((json_t *)keyval, key, value) {
+    json_object_foreach((json_t *) keyval, key, value) {
       if (!key || !json_is_string(value)) {
         continue;
       }
@@ -459,11 +459,11 @@ ngx_http_auth_jwt_variable_find(ngx_http_request_t *r,
     ngx_memcpy(key, var, len);
   }
 
-  value = (*jwt_get)(ctx->jwt, (char *)key);
+  value = (*jwt_get)(ctx->jwt, (char *) key);
   if (value == NULL) {
     size_t i, t;
 
-    str = (*jwt_get_json)(ctx->jwt, (char *)key);
+    str = (*jwt_get_json)(ctx->jwt, (char *) key);
     if (str == NULL) {
       v->not_found = 1;
       return NGX_OK;
@@ -515,7 +515,7 @@ static ngx_int_t
 ngx_http_auth_jwt_variable_header(ngx_http_request_t *r,
                                   ngx_http_variable_value_t *v, uintptr_t data)
 {
-  return ngx_http_auth_jwt_variable_find(r, v, (ngx_str_t *)data,
+  return ngx_http_auth_jwt_variable_find(r, v, (ngx_str_t *) data,
                                          NGX_HTTP_AUTH_JWT_VARIABLE_HEADER);
 }
 
@@ -523,7 +523,7 @@ static ngx_int_t
 ngx_http_auth_jwt_variable_claim(ngx_http_request_t *r,
                                  ngx_http_variable_value_t *v, uintptr_t data)
 {
-  return ngx_http_auth_jwt_variable_find(r, v, (ngx_str_t *)data,
+  return ngx_http_auth_jwt_variable_find(r, v, (ngx_str_t *) data,
                                          NGX_HTTP_AUTH_JWT_VARIABLE_CLAIM);
 }
 
@@ -531,7 +531,7 @@ static ngx_int_t
 ngx_http_auth_jwt_variable_claims(ngx_http_request_t *r,
                                   ngx_http_variable_value_t *v, uintptr_t data)
 {
-  return ngx_http_auth_jwt_variable_find(r, v, (ngx_str_t *)data,
+  return ngx_http_auth_jwt_variable_find(r, v, (ngx_str_t *) data,
                                          NGX_HTTP_AUTH_JWT_VARIABLE_CLAIMS);
 }
 
@@ -630,7 +630,7 @@ ngx_http_auth_jwt_conf_set_claim(ngx_conf_t *cf,
   }
 
   var->get_handler = ngx_http_auth_jwt_variable_claim;
-  var->data = (uintptr_t)str;
+  var->data = (uintptr_t) str;
 
   return NGX_CONF_OK;
 }
@@ -696,8 +696,8 @@ ngx_http_auth_jwt_conf_set_key_file(ngx_conf_t *cf,
     return NGX_CONF_ERROR;
   }
 
-  file = (char *)ngx_http_auth_jwt_strdup(cf->pool,
-                                          value[1].data, value[1].len);
+  file = (char *) ngx_http_auth_jwt_strdup(cf->pool,
+                                           value[1].data, value[1].len);
   if (file == NULL) {
     return "failed to allocate file";
   }
@@ -942,14 +942,14 @@ ngx_http_auth_jwt_exit_process(ngx_cycle_t *cycle)
     return;
   }
 
-  ctx = (ngx_http_conf_ctx_t *)cycle->conf_ctx[ngx_http_module.index];
+  ctx = (ngx_http_conf_ctx_t *) cycle->conf_ctx[ngx_http_module.index];
   index = ngx_http_auth_jwt_module.ctx_index;
 
   if (!ctx->loc_conf[index]) {
     return;
   }
 
-  conf = (ngx_http_auth_jwt_loc_conf_t *)ctx->loc_conf[index];
+  conf = (ngx_http_auth_jwt_loc_conf_t *) ctx->loc_conf[index];
 
   if (conf && conf->key.vars) {
     json_delete(conf->key.vars);
@@ -1054,7 +1054,7 @@ ngx_http_auth_jwt_key_request_handler(ngx_http_request_t *r,
     len = b->last - b->pos;
 
     if (ngx_http_auth_jwt_key_import_string(&key_request->ctx->keys,
-                                            (char *)b->pos, len,
+                                            (char *) b->pos, len,
                                             key_request->jwks) != 0) {
       ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                     "auth_jwt: failed to load %s: \"%V\"",
@@ -1103,7 +1103,7 @@ ngx_http_auth_jwt_load_keys(ngx_http_request_t *r,
         continue;
       }
 
-      file = (char *)ngx_http_auth_jwt_strdup(r->pool, v->data, v->len);
+      file = (char *) ngx_http_auth_jwt_strdup(r->pool, v->data, v->len);
       if (file == NULL) {
         ngx_log_error(NGX_LOG_CRIT, r->connection->log, 0,
                       "auth_jwt: failed to allocate key file");
@@ -1184,7 +1184,7 @@ ngx_http_auth_jwt_get_grant_time(ngx_http_request_t *r, jwt_t *jwt, char *claim)
 {
   time_t val;
 
-  val = (time_t)jwt_get_grant_int(jwt, claim);
+  val = (time_t) jwt_get_grant_int(jwt, claim);
   if (val == -1) {
     char *var;
 
@@ -1193,15 +1193,15 @@ ngx_http_auth_jwt_get_grant_time(ngx_http_request_t *r, jwt_t *jwt, char *claim)
       size_t n;
       u_char *p;
 
-      p = (u_char *)ngx_strchr(var, '.');
+      p = (u_char *) ngx_strchr(var, '.');
       if (p) {
-        n = p - (u_char *)var;
+        n = p - (u_char *) var;
       }
       else {
         n = strlen(var);
       }
 
-      val = ngx_atotm((u_char *)var, n);
+      val = ngx_atotm((u_char *) var, n);
 
       free(var);
     }
@@ -1284,7 +1284,7 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
                     ": exp=%l: greater than expected=%l actual=%l",
                     exp, now, exp + cf->leeway);
       ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                    "auth_jwt: token: \"%s\"", (char *)ctx->token);
+                    "auth_jwt: token: \"%s\"", (char *) ctx->token);
       return NGX_ERROR;
     }
   }
@@ -1338,7 +1338,7 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
       return NGX_ERROR;
     }
 
-    valid = ngx_strstr(aud, (char *)expected.data);
+    valid = ngx_strstr(aud, (char *) expected.data);
     if (valid) {
       size_t aud_len = strlen(aud);
       size_t n = valid - aud;
@@ -1382,13 +1382,13 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
       return NGX_ERROR;
     }
 
-    if (strlen((char *)nonce) != expected.len
-        || ngx_strncmp((char *)nonce,
-                       (char *)expected.data, expected.len) != 0) {
+    if (strlen((char *) nonce) != expected.len
+        || ngx_strncmp((char *) nonce,
+                       (char *) expected.data, expected.len) != 0) {
       ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                     "auth_jwt: rejected due to not match"
                     ": nonce='%s': expected='%V'",
-                    (char *)nonce, &expected);
+                    (char *) nonce, &expected);
       return NGX_ERROR;
     }
   }
@@ -1411,8 +1411,8 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
   }
 
   if (key) {
-    if (jwt_verify_sig(ctx->jwt, (char *)ctx->token, ctx->payload_len,
-                       (unsigned char *)key, strlen(key)) == 0) {
+    if (jwt_verify_sig(ctx->jwt, (char *) ctx->token, ctx->payload_len,
+                       (unsigned char *) key, strlen(key)) == 0) {
       ctx->verified = 1;
       return NGX_OK;
     }
@@ -1429,8 +1429,8 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
 
     key = json_string_value(var);
 
-    if (jwt_verify_sig(ctx->jwt, (char *)ctx->token, ctx->payload_len,
-                       (unsigned char *)key, strlen(key)) == 0) {
+    if (jwt_verify_sig(ctx->jwt, (char *) ctx->token, ctx->payload_len,
+                       (unsigned char *) key, strlen(key)) == 0) {
       ctx->verified = 1;
       return NGX_OK;
     }
@@ -1441,7 +1441,7 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
                 "or signature validate failure");
 
   ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                "auth_jwt: token: \"%s\"", (char *)ctx->token);
+                "auth_jwt: token: \"%s\"", (char *) ctx->token);
 
   return NGX_ERROR;
 }
@@ -1546,7 +1546,7 @@ ngx_http_auth_jwt_handler(ngx_http_request_t *r, ngx_int_t phase)
   }
 
   /* parse jwt token */
-  if (jwt_parse(&ctx->jwt, (char *)ctx->token, &ctx->payload_len) != 0
+  if (jwt_parse(&ctx->jwt, (char *) ctx->token, &ctx->payload_len) != 0
       || ctx->jwt == NULL) {
     ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
                   "auth_jwt: failed to parse jwt token");
