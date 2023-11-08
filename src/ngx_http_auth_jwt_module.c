@@ -979,7 +979,7 @@ ngx_http_auth_jwt_init_process(ngx_cycle_t *cycle)
     return NGX_ERROR;
   }
 
-    return NGX_OK;
+  return NGX_OK;
 }
 
 static void
@@ -1400,6 +1400,10 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
     }
 
     key = json_string_value(var);
+
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                  "auth_jwt: testing signature for kid: \"%s\", key: \"%s\"",
+                  kid, key);
 
     if (jwt_verify_sig(ctx->jwt, (char *)ctx->token, ctx->payload_len,
                        (unsigned char *)key, strlen(key)) == 0)
