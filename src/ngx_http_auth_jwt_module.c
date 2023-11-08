@@ -47,6 +47,7 @@ typedef struct {
     ngx_flag_t exp;
     ngx_flag_t iat;
     ngx_flag_t iss;
+    ngx_flag_t nbf;
     ngx_flag_t sig;
     ngx_flag_t sub;
     ngx_http_complex_value_t *aud;
@@ -187,6 +188,12 @@ static ngx_command_t ngx_http_auth_jwt_commands[] = {
     ngx_conf_set_flag_slot,
     NGX_HTTP_LOC_CONF_OFFSET,
     offsetof(ngx_http_auth_jwt_loc_conf_t, validate.iss),
+    NULL },
+  { ngx_string("auth_jwt_validate_nbf"),
+    NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+    ngx_conf_set_flag_slot,
+    NGX_HTTP_LOC_CONF_OFFSET,
+    offsetof(ngx_http_auth_jwt_loc_conf_t, validate.nbf),
     NULL },
   { ngx_string("auth_jwt_validate_sig"),
     NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
@@ -813,6 +820,7 @@ ngx_http_auth_jwt_create_loc_conf(ngx_conf_t *cf)
   conf->validate.exp = NGX_CONF_UNSET;
   conf->validate.iat = NGX_CONF_UNSET;
   conf->validate.iss = NGX_CONF_UNSET;
+  conf->validate.nbf = NGX_CONF_UNSET;
   conf->validate.sig = NGX_CONF_UNSET;
   conf->validate.sub = NGX_CONF_UNSET;
   conf->validate.aud = NGX_CONF_UNSET_PTR;
@@ -885,6 +893,7 @@ ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
   ngx_conf_merge_value(conf->validate.exp, prev->validate.exp, 1);
   ngx_conf_merge_value(conf->validate.iat, prev->validate.iat, 0);
   ngx_conf_merge_value(conf->validate.iss, prev->validate.iss, 0);
+  ngx_conf_merge_value(conf->validate.nbf, prev->validate.nbf, 0);
   ngx_conf_merge_value(conf->validate.sig, prev->validate.sig, 1);
   ngx_conf_merge_value(conf->validate.sub, prev->validate.sub, 0);
   ngx_conf_merge_ptr_value(conf->validate.aud, prev->validate.aud, NULL);
@@ -1263,6 +1272,26 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
 
     iat = ngx_http_auth_jwt_get_grant_time(r, ctx->jwt, "iat");
     if (iat == -1) {
+      return NGX_ERROR;
+    }
+  }
+
+  /* validate nbf claim */
+  if (cf->validate.nbf) {
+    time_t nbf, now;
+
+    nbf = ngx_http_auth_jwt_get_grant_time(r, ctx->jwt, "nbf");
+    if (nbf == -1) {
+      return NGX_ERROR;
+    }
+
+    now = ngx_time();
+
+    if (now < nbf - cf->leeway) {
+      ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
+                    "auth_jwt: rejected due to nbf claim validate failure"
+                    ": nbf=%l: after or equal to expected=%l actual=%l",
+                    nbf, now, nbf - cf->leeway);
       return NGX_ERROR;
     }
   }
