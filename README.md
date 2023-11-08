@@ -225,6 +225,14 @@ Context: http, server, location
 Determines whether to validating the iss JWT claim.
 
 ```
+Syntax: auth_jwt_validate_nbf on | off;
+Default: auth_jwt_validate_nbf off;
+Context: http, server, location
+```
+
+Determines whether to validating the nbf JWT claim.
+
+```
 Syntax: auth_jwt_validate_sig on | off;
 Default: auth_jwt_validate_sig on;
 Context: http, server, location
@@ -247,7 +255,7 @@ Context: http, server, location
 ```
 
 Sets the maximum allowable leeway to compensate clock skew
-when verifying the exp JWT claims.
+when verifying the exp and nbf JWT claims.
 
 ```
 Syntax: auth_jwt_phase preaccess | access;
