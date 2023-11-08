@@ -1140,6 +1140,42 @@ ngx_http_auth_jwt_load_keys(ngx_http_request_t *r,
   return NGX_OK;
 }
 
+static time_t
+ngx_http_auth_jwt_get_grant_time(ngx_http_request_t *r, jwt_t *jwt, char *claim)
+{
+  time_t val;
+
+  val = (time_t)jwt_get_grant_int(jwt, claim);
+  if (val == -1) {
+    char *var;
+
+    var = jwt_get_grants_json(jwt, claim);
+    if (var) {
+      size_t n;
+      u_char *p;
+
+      p = (u_char *)ngx_strchr(var, '.');
+      if (p) {
+        n = p - (u_char *)var;
+      } else {
+        n = strlen(var);
+      }
+
+      val = ngx_atotm((u_char *)var, n);
+
+      free(var);
+    }
+  }
+
+  if (val == -1) {
+    ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                  "auth_jwt: rejected due to %s claim could not be obtained",
+                  claim);
+  }
+
+  return val;
+}
+
 static ngx_int_t
 ngx_http_auth_jwt_validate(ngx_http_request_t *r,
                            ngx_http_auth_jwt_loc_conf_t *cf,
@@ -1194,29 +1230,9 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
   if (cf->validate.exp) {
     time_t exp, now;
 
-    exp = (time_t)jwt_get_grant_int(ctx->jwt, "exp");
+    exp = ngx_http_auth_jwt_get_grant_time(r, ctx->jwt, "exp");
     if (exp == -1) {
-      char *var;
-
-      var = jwt_get_grants_json(ctx->jwt, "exp");
-      if (var) {
-        size_t n;
-        u_char *p;
-
-        p = (u_char *)ngx_strchr(var, '.');
-        if (p) {
-          n = p - (u_char *)var;
-        } else {
-          n = strlen(var);
-        }
-
-        exp = ngx_atotm((u_char *)var, n);
-
-        free(var);
-      } else {
-        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                      "auth_jwt: failed to get exp claim");
-      }
+      return NGX_ERROR;
     }
 
     now = ngx_time();
