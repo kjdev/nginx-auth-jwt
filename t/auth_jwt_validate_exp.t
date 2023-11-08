@@ -112,3 +112,25 @@ X-Jwt-Claim-Email:
 --- error_log eval
 qr/auth_jwt: rejected due to token expired: exp=1577804400: greater than expected=[0-9]+ actual=1577804400/
 --- log_level: info
+
+=== invalid value
+--- http_config
+include $TEST_NGINX_CONF_DIR/authorized_server.conf;
+--- config
+include $TEST_NGINX_CONF_DIR/jwt.conf;
+location / {
+  auth_jwt "" token=$test1_invalid_exp_negative_jwt;
+  auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
+  auth_jwt_validate_exp on;
+  include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
+}
+--- request
+GET /
+--- response_headers
+X-Jwt-Claim-Iss:
+X-Jwt-Claim-Sub:
+X-Jwt-Claim-Aud:
+X-Jwt-Claim-Email:
+--- error_code: 401
+--- error_log: auth_jwt: rejected due to exp claim could not be obtained
+--- log_level: info
