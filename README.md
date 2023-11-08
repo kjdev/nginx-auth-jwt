@@ -225,6 +225,14 @@ Context: http, server, location
 Determines whether to validating JWT signature.
 
 ```
+Syntax: auth_jwt_validate_sub on | off;
+Default: auth_jwt_validate_sub off;
+Context: http, server, location
+```
+
+Determines whether to validating the sub JWT claim.
+
+```
 Syntax: auth_jwt_leeway time;
 Default: auth_jwt_leeway 0s;
 Context: http, server, location
