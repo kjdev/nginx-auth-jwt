@@ -1160,3 +1160,13 @@ void *jwks_iter_by(const char *id)
   }
   return json_object_key_to_iter(id);
 }
+
+int ssl_global_init()
+{
+  return gnutls_global_init();
+}
+
+void ssl_global_deinit()
+{
+  return gnutls_global_deinit();
+}

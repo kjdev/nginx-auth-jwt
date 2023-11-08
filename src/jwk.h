@@ -9,6 +9,9 @@ extern "C" {
 
 typedef struct jwk jwk_t;
 
+int ssl_global_init();
+void ssl_global_deinit();
+
 jwk_t *jwk_import_string(const char *input, const size_t len);
 #define jwk_import(input) jwk_import_string(input, 0)
 jwk_t *jwk_import_file(const char *file);
