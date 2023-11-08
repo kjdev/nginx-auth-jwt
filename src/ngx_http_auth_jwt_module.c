@@ -1121,13 +1121,19 @@ ngx_http_auth_jwt_key_request_handler(ngx_http_request_t *r,
 
     len = b->last - b->pos;
 
-    if (ngx_http_auth_jwt_key_import_string(&key_request->ctx->keys,
-                                            (char *)b->pos, len,
-                                            key_request->jwks) != 0)
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                  "auth_jwt: importing jwt key: %s: \"%V\"",
+                  (key_request->jwks ? "jwks" : "key"));
+
+    int res = ngx_http_auth_jwt_key_import_string(&key_request->ctx->keys,
+                                                  (char *)b->pos, len,
+                                                  key_request->jwks);
+
+    if (res != 0)
     {
       ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                    "auth_jwt: failed to load %s: \"%V\"",
-                    (key_request->jwks ? "jwks" : "key"), &r->uri);
+                    "auth_jwt: failed to load %s: \"%V\"; res: %d",
+                    (key_request->jwks ? "jwks" : "key"), &r->uri, res);
     }
   }
 
