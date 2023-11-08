@@ -463,8 +463,8 @@ static int jwk_key_rsa_import(jwk_key_rsa_t *rsa, jwk_t *jwk)
   {
     return EPERM;
   }
-
   rsa->e = jwk_key_base64_to_datum(var);
+  
   return 0;
 }
 
@@ -607,6 +607,11 @@ static int jwk_export_key(jwk_t *jwk)
     if (jwk_key_rsa_import(&rsa, jwk) == 0)
     {
       jwk->key = jwk_key_rsa_get(&rsa);
+      if (jwk->key == NULL)
+      {
+        return EPERM;
+      }
+
       jwk->key_len = strlen(jwk->key);
     }
 
@@ -621,6 +626,11 @@ static int jwk_export_key(jwk_t *jwk)
     if (jwk_key_ec_import(&ec, jwk) == 0)
     {
       jwk->key = jwk_key_ec_get(&ec);
+      if (jwk->key == NULL)
+      {
+        return EPERM;
+      }
+
       jwk->key_len = strlen(jwk->key);
     }
 
