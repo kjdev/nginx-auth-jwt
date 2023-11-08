@@ -24,6 +24,7 @@ static ngx_int_t ngx_http_auth_jwt_post_conf(ngx_conf_t *cf);
 static void *ngx_http_auth_jwt_create_loc_conf(ngx_conf_t *cf);
 static char *ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child);
 
+static ngx_int_t ngx_http_auth_jwt_init_process(ngx_cycle_t *cycle);
 static void ngx_http_auth_jwt_exit_process(ngx_cycle_t *cycle);
 
 static ngx_int_t ngx_http_auth_jwt_preaccess_handler(ngx_http_request_t *r);
