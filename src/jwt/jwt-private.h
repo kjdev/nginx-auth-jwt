@@ -5,7 +5,7 @@
    License, v. 2.0. If a copy of the MPL was not distributed with this
    file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* Originally of https://github.com/benmcollins/libjwt at v1.15.2 */
+/* Originally of https://github.com/benmcollins/libjwt at v1.15.3 */
 
 #ifndef JWT_PRIVATE_H
 #define JWT_PRIVATE_H
@@ -24,6 +24,8 @@ struct jwt {
 struct jwt_valid {
 	jwt_alg_t alg;
 	time_t now;
+	time_t nbf_leeway;
+	time_t exp_leeway;
 	int hdr;
 	json_t *req_grants;
 	unsigned int status;

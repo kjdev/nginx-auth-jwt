@@ -5,7 +5,7 @@
    License, v. 2.0. If a copy of the MPL was not distributed with this
    file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* Originally of https://github.com/benmcollins/libjwt at v1.15.2 */
+/* Originally of https://github.com/benmcollins/libjwt at v1.15.3 */
 
 #include <stdlib.h>
 #include <string.h>
