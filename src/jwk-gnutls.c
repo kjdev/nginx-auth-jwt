@@ -324,8 +324,16 @@ gnutls_pubkey_t jwk_key_pem_pubkey_new(jwk_kty_t class, void *params)
   case JWK_KTY_RSA:
   {
     jwk_key_rsa_t *p = (jwk_key_rsa_t *)params;
+
+    if (p->n == NULL || p->e == NULL)
+    {
+      gnutls_pubkey_deinit(pubkey);
+      return NULL;
+    }
+
     if (gnutls_pubkey_import_rsa_raw(pubkey, p->n, p->e) != GNUTLS_E_SUCCESS)
     {
+      gnutls_pubkey_deinit(pubkey);
       return NULL;
     }
 
@@ -335,10 +343,18 @@ gnutls_pubkey_t jwk_key_pem_pubkey_new(jwk_kty_t class, void *params)
   case JWK_KTY_EC:
   {
     jwk_key_ec_t *p = (jwk_key_ec_t *)params;
+
+    if (p->curve == NULL || p->curve->data == NULL || p->x == NULL || p->y == NULL)
+    {
+      gnutls_pubkey_deinit(pubkey);
+      return NULL;
+    }
+
     gnutls_ecc_curve_t curve = gnutls_ecc_curve_get_id((const char *)p->curve->data);
 
     if (gnutls_pubkey_import_ecc_raw(pubkey, curve, p->x, p->y) != GNUTLS_E_SUCCESS)
     {
+      gnutls_pubkey_deinit(pubkey);
       return NULL;
     }
 
@@ -346,6 +362,7 @@ gnutls_pubkey_t jwk_key_pem_pubkey_new(jwk_kty_t class, void *params)
   }
 
   default:
+    gnutls_pubkey_deinit(pubkey);
     return NULL;
   }
 
