@@ -10,8 +10,8 @@
 #define NGX_HTTP_AUTH_JWT_CLAIM_VAR_PREFIX "jwt_claim_"
 #define NGX_HTTP_AUTH_JWT_HEADER_VAR_PREFIX "jwt_header_"
 
-static ngx_int_t ngx_http_auth_jwt_variable_claim(ngx_http_request_t *r,  ngx_http_variable_value_t *v, uintptr_t data);
-static ngx_int_t ngx_http_auth_jwt_variable_header(ngx_http_request_t *r,  ngx_http_variable_value_t *v, uintptr_t data);
+static ngx_int_t ngx_http_auth_jwt_variable_claim(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data);
+static ngx_int_t ngx_http_auth_jwt_variable_header(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data);
 static ngx_int_t ngx_http_auth_jwt_variable_claims(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data);
 
 static char *ngx_http_auth_jwt_conf_set_token_variable(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
