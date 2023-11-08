@@ -116,7 +116,7 @@ static char *jwk_base64_urlencode(const char *input, size_t length)
 
       if (padding > 0)
       {
-        realloc(base64_encoded, output_data.size + 1 - padding);
+        base64_encoded = realloc(base64_encoded, output_data.size + 1 - padding);
       }
 
       gnutls_free(output_data.data);
