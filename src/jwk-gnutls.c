@@ -142,8 +142,8 @@ static char *jwk_base64_urldecode(const char *input)
   gnutls_datum_t output_data = {NULL, 0};
   char *base64_decoded = NULL;
 
-  if (gnutls_base64_decode2(&input_data, &output_data) == GNUTLS_E_SUCCESS &&
-      output_data.data != NULL)
+  int res = gnutls_base64_decode2(&input_data, &output_data);
+  if (res == GNUTLS_E_SUCCESS && output_data.data != NULL)
   {
     base64_decoded = (char *)malloc(output_data.size + 1);
     if (base64_decoded)
@@ -464,7 +464,7 @@ static int jwk_key_rsa_import(jwk_key_rsa_t *rsa, jwk_t *jwk)
     return EPERM;
   }
   rsa->e = jwk_key_base64_to_datum(var);
-  
+
   return 0;
 }
 
