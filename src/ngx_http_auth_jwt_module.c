@@ -1264,7 +1264,7 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
 
     now = ngx_time();
 
-    if (now > exp + cf->leeway) {
+    if (now >= exp + cf->leeway) {
       ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
                     "auth_jwt: rejected due to token expired"
                     ": exp=%l: greater than expected=%l actual=%l",
