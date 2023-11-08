@@ -209,6 +209,14 @@ Context: http, server, location
 Determines whether to validating the exp JWT claim.
 
 ```
+Syntax: auth_jwt_validate_iat on | off;
+Default: auth_jwt_validate_iat off;
+Context: http, server, location
+```
+
+Determines whether to validating the iat JWT claim.
+
+```
 Syntax: auth_jwt_validate_iss on | off;
 Default: auth_jwt_validate_iss off;
 Context: http, server, location
