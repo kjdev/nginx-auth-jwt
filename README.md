@@ -233,6 +233,14 @@ Context: http, server, location
 Determines whether to validating the nbf JWT claim.
 
 ```
+Syntax: auth_jwt_validate_nonce string;
+Default: -
+Context: http, server, location
+```
+
+Validating the nonce JWT claim match a value.
+
+```
 Syntax: auth_jwt_validate_sig on | off;
 Default: auth_jwt_validate_sig on;
 Context: http, server, location
