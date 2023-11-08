@@ -44,11 +44,14 @@ static jwk_kty_t jwk_kty_from(const char *kty)
 {
   if (strcmp("oct", kty) == 0) {
     return JWK_KTY_OCT;
-  } else if (strcmp("RSA", kty) == 0) {
+  }
+  else if (strcmp("RSA", kty) == 0) {
     return JWK_KTY_RSA;
-  } else if (strcmp("EC", kty) == 0) {
+  }
+  else if (strcmp("EC", kty) == 0) {
     return JWK_KTY_EC;
-  } else if (strcmp("OKP", kty) == 0) {
+  }
+  else if (strcmp("OKP", kty) == 0) {
     return JWK_KTY_OKP;
   }
   return JWK_KTY_NONE;
@@ -187,7 +190,8 @@ static int jwk_calc_thumbprint(jwk_t *jwk)
       json_object_set_new(members, "k", json_string(var));
     }
     json_object_set_new(members, "kty", json_string(jwk_kty_to(jwk->kty)));
-  } else if (jwk->kty == JWK_KTY_RSA) {
+  }
+  else if (jwk->kty == JWK_KTY_RSA) {
     count = 3;
     var = jwk_parameter(jwk, "e");
     if (var) {
@@ -198,7 +202,8 @@ static int jwk_calc_thumbprint(jwk_t *jwk)
     if (var) {
       json_object_set_new(members, "n", json_string(var));
     }
-  } else if (jwk->kty == JWK_KTY_EC) {
+  }
+  else if (jwk->kty == JWK_KTY_EC) {
     count = 4;
     var = jwk_parameter(jwk, "crv");
     if (var) {
@@ -213,7 +218,8 @@ static int jwk_calc_thumbprint(jwk_t *jwk)
     if (var) {
       json_object_set_new(members, "y", json_string(var));
     }
-  } else if (jwk->kty == JWK_KTY_OKP) {
+  }
+  else if (jwk->kty == JWK_KTY_OKP) {
     count = 3;
     var = jwk_parameter(jwk, "crv");
     if (var) {
@@ -224,7 +230,8 @@ static int jwk_calc_thumbprint(jwk_t *jwk)
     if (var) {
       json_object_set_new(members, "x", json_string(var));
     }
-  } else {
+  }
+  else {
     count = 0;
   }
 
@@ -601,11 +608,14 @@ static int jwk_key_ec_import(jwk_key_ec_t *ec, jwk_t *jwk)
 
     if (strcmp("P-256", crv) == 0) {
       nid = NID_X9_62_prime256v1;
-    } else if (strcmp("P-384", crv) == 0) {
+    }
+    else if (strcmp("P-384", crv) == 0) {
       nid = NID_secp384r1;
-    } else if (strcmp("P-521", crv) == 0) {
+    }
+    else if (strcmp("P-521", crv) == 0) {
       nid = NID_secp521r1;
-    } else {
+    }
+    else {
       free(pub);
       return EPERM;
     }
@@ -668,7 +678,8 @@ static int jwk_export_key(jwk_t *jwk)
     }
 
     jwk->key = jwk_base64_urldecode(var, &jwk->key_len);
-  } else if (jwk->kty == JWK_KTY_RSA) {
+  }
+  else if (jwk->kty == JWK_KTY_RSA) {
     jwk_key_rsa_t rsa;
 
     jwk_key_rsa_init(&rsa);
@@ -679,7 +690,8 @@ static int jwk_export_key(jwk_t *jwk)
     }
 
     jwk_key_rsa_deinit(&rsa);
-  } else if (jwk->kty == JWK_KTY_EC) {
+  }
+  else if (jwk->kty == JWK_KTY_EC) {
     jwk_key_ec_t ec;
 
     jwk_key_ec_init(&ec);
@@ -690,10 +702,12 @@ static int jwk_export_key(jwk_t *jwk)
     }
 
     jwk_key_ec_deinit(&ec);
-  } else if (jwk->kty == JWK_KTY_OKP) {
+  }
+  else if (jwk->kty == JWK_KTY_OKP) {
     // TODO
     return EPERM;
-  } else {
+  }
+  else {
     return EPERM;
   }
 
@@ -743,7 +757,8 @@ jwk_t *jwk_import_string(const char *input, const size_t len)
 
   if (len == 0) {
     json = json_loads(input, 0, NULL);
-  } else {
+  }
+  else {
     json = json_loadb(input, len, 0, NULL);
   }
   if (!json) {
@@ -927,7 +942,8 @@ jwks_t *jwks_import_string(const char *input, const size_t len)
 
   if (len == 0) {
     json = json_loads(input, 0, NULL);
-  } else {
+  }
+  else {
     json = json_loadb(input, len, 0, NULL);
   }
   if (!json) {
@@ -1022,14 +1038,16 @@ int jwks_append(jwks_t *jwks, const jwk_t *jwk)
 
     json_array_insert_new(jwks->thumbprints,
                           index, json_string(jwk->thumbprint));
-  } else {
+  }
+  else {
     json_array_insert_new(jwks->thumbprints, index, json_null());
   }
 
   if (jwk->key) {
     json_array_insert_new(jwks->keys,
                           index, json_stringn_nocheck(jwk->key, jwk->key_len));
-  } else {
+  }
+  else {
     json_array_insert_new(jwks->keys, index, json_null());
   }
 

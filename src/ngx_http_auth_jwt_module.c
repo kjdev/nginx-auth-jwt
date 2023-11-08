@@ -317,7 +317,8 @@ ngx_http_auth_jwt_key_import_file(json_t **object, const char *path,
     if (jwks == NULL) {
       return 1;
     }
-  } else {
+  }
+  else {
     keyval = json_load_file(path, 0, NULL);
     if (keyval == NULL) {
       return 1;
@@ -354,10 +355,12 @@ ngx_http_auth_jwt_key_import_string(json_t **object,
     if (jwks == NULL) {
       return 1;
     }
-  } else {
+  }
+  else {
     if (len == 0) {
       keyval = json_loads(input, 0, NULL);
-    } else {
+    }
+    else {
       keyval = json_loadb(input, len, 0, NULL);
     }
     if (keyval == NULL) {
@@ -424,7 +427,8 @@ ngx_http_auth_jwt_variable_find(ngx_http_request_t *r,
     prefix = NGX_HTTP_AUTH_JWT_HEADER_VAR_PREFIX;
     jwt_get = jwt_get_header;
     jwt_get_json = jwt_get_headers_json;
-  } else {
+  }
+  else {
     if (!ctx->verified) {
       v->not_found = 1;
       return NGX_OK;
@@ -650,7 +654,8 @@ ngx_http_auth_jwt_conf_set_key_file(ngx_conf_t *cf,
   if (cf->args->nelts > 2 && value[2].len > 0) {
     if (ngx_strncmp("keyval", value[2].data, value[2].len) == 0) {
       jwks = 0;
-    } else if (ngx_strncmp("jwks", value[2].data, value[2].len) != 0) {
+    }
+    else if (ngx_strncmp("jwks", value[2].data, value[2].len) != 0) {
       return "format is incorrect";
     }
   }
@@ -726,7 +731,8 @@ ngx_http_auth_jwt_conf_set_key_request(ngx_conf_t *cf,
   if (cf->args->nelts > 2 && value[2].len > 0) {
     if (ngx_strncmp("keyval", value[2].data, value[2].len) == 0) {
       jwks = 0;
-    } else if (ngx_strncmp("jwks", value[2].data, value[2].len) != 0) {
+    }
+    else if (ngx_strncmp("jwks", value[2].data, value[2].len) != 0) {
       return "format is incorrect";
     }
   }
@@ -755,7 +761,8 @@ ngx_http_auth_jwt_conf_set_key_request(ngx_conf_t *cf,
     }
 
     ngx_str_null(&key_request->url);
-  } else {
+  }
+  else {
     key_request->index = -1;
     key_request->url = value[1];
   }
@@ -850,7 +857,8 @@ ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
 
   if (conf->key.files == NULL || conf->key.files->nelts == 0) {
     conf->key.files = prev->key.files;
-  } else if (prev->key.files && prev->key.files->nelts) {
+  }
+  else if (prev->key.files && prev->key.files->nelts) {
     ngx_uint_t i, len, n;
     ngx_http_auth_jwt_key_file_t *key_file, *var;
 
@@ -872,7 +880,8 @@ ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
 
   if (conf->key.requests == NULL || conf->key.requests->nelts == 0) {
     conf->key.requests = prev->key.requests;
-  } else if (prev->key.requests && prev->key.requests->nelts) {
+  }
+  else if (prev->key.requests && prev->key.requests->nelts) {
     ngx_uint_t i, len, n;
     ngx_http_auth_jwt_key_request_t *key_request, *var;
 
@@ -913,7 +922,8 @@ ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
   if (prev->key.vars) {
     if (conf->key.vars) {
       json_object_update_missing(conf->key.vars, prev->key.vars);
-    } else {
+    }
+    else {
       conf->key.vars = json_copy(prev->key.vars);
     }
   }
@@ -993,7 +1003,8 @@ ngx_http_auth_jwt_set_bearer_header(ngx_http_request_t *r,
   if (error) {
     p = ngx_cpymem(p, "\", error=\"invalid_token\"",
                    sizeof("\", error=\"invalid_token\"") - 1);
-  } else {
+  }
+  else {
     *p = '"';
   }
 
@@ -1147,7 +1158,8 @@ ngx_http_auth_jwt_load_keys(ngx_http_request_t *r,
 
         url.len = v->len;
         url.data = v->data;
-      } else {
+      }
+      else {
         url = key_request[i].url;
       }
 
@@ -1184,7 +1196,8 @@ ngx_http_auth_jwt_get_grant_time(ngx_http_request_t *r, jwt_t *jwt, char *claim)
       p = (u_char *)ngx_strchr(var, '.');
       if (p) {
         n = p - (u_char *)var;
-      } else {
+      }
+      else {
         n = strlen(var);
       }
 
@@ -1232,7 +1245,8 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
     if (algorithm == JWT_ALG_NONE) {
       cf->validate.sig = 0;
     }
-  } else if (algorithm == JWT_ALG_NONE) {
+  }
+  else if (algorithm == JWT_ALG_NONE) {
     /* rejected JWT_ALG_NONE as algorithm */
     ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
                   "auth_jwt: rejected due to none algorithm");
@@ -1331,7 +1345,8 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
 
       if (n == 0 || n + expected.len >= aud_len) {
         valid = NULL;
-      } else if (aud[n-1] != '"' || aud[n+expected.len] != '"') {
+      }
+      else if (aud[n-1] != '"' || aud[n+expected.len] != '"') {
         valid = NULL;
       }
     }
@@ -1506,9 +1521,10 @@ ngx_http_auth_jwt_handler(ngx_http_request_t *r, ngx_int_t phase)
     }
     var.data = variable->data;
     var.len = variable->len;
-  } else if (r->headers_in.authorization
-             && ngx_strncmp(r->headers_in.authorization->value.data,
-                            "Bearer ", sizeof("Bearer ") - 1) == 0) {
+  }
+  else if (r->headers_in.authorization
+           && ngx_strncmp(r->headers_in.authorization->value.data,
+                          "Bearer ", sizeof("Bearer ") - 1) == 0) {
     /* token from authorization header */
     var.data = r->headers_in.authorization->value.data + 7;
     var.len = r->headers_in.authorization->value.len - 7;
