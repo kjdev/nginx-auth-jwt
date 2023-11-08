@@ -96,6 +96,7 @@ static char *jwk_base64_urlencode(const char *input, size_t length)
 
       // Replace '+' with '-' and '/' with '_'
       size_t i;
+      size_t padding = 0;
       for (i = 0; i < output_data.size; i++)
       {
         if (base64_encoded[i] == '+')
@@ -106,6 +107,16 @@ static char *jwk_base64_urlencode(const char *input, size_t length)
         {
           base64_encoded[i] = '_';
         }
+        else if (base64_encoded[i] == '=')
+        {
+          base64_encoded[i] = '\0';
+          padding++;
+        }
+      }
+
+      if (padding > 0)
+      {
+        realloc(base64_encoded, output_data.size + 1 - padding);
       }
 
       gnutls_free(output_data.data);
@@ -117,6 +128,8 @@ static char *jwk_base64_urlencode(const char *input, size_t length)
 
 static char *jwk_base64_urldecode(const char *input)
 {
+  unsigned char *padded_data = NULL;
+
   // Create a URL-safe copy of the input string
   char *url_safe_copy = strdup(input);
   if (url_safe_copy == NULL)
@@ -139,6 +152,19 @@ static char *jwk_base64_urldecode(const char *input)
   }
 
   gnutls_datum_t input_data = {(unsigned char *)url_safe_copy, strlen(url_safe_copy)};
+  if (input_data.size % 4 != 0)
+  {
+    size_t padded_size = input_data.size + (4 - input_data.size % 4);
+
+    padded_data = malloc(padded_size);
+
+    memcpy(padded_data, input_data.data, input_data.size);
+    memset(padded_data + input_data.size, '=', padded_size - input_data.size);
+
+    input_data.data = padded_data;
+    input_data.size = padded_size;
+  }
+
   gnutls_datum_t output_data = {NULL, 0};
   char *base64_decoded = NULL;
 
@@ -153,6 +179,11 @@ static char *jwk_base64_urldecode(const char *input)
     }
 
     gnutls_free(output_data.data);
+  }
+
+  if (padded_data != NULL)
+  {
+    free(padded_data);
   }
 
   free(url_safe_copy);
