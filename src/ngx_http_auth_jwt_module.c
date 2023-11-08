@@ -45,6 +45,7 @@ typedef struct {
   struct {
     ngx_uint_t alg;
     ngx_flag_t exp;
+    ngx_flag_t iat;
     ngx_flag_t iss;
     ngx_flag_t sig;
     ngx_flag_t sub;
@@ -174,6 +175,12 @@ static ngx_command_t ngx_http_auth_jwt_commands[] = {
     ngx_conf_set_flag_slot,
     NGX_HTTP_LOC_CONF_OFFSET,
     offsetof(ngx_http_auth_jwt_loc_conf_t, validate.exp),
+    NULL },
+  { ngx_string("auth_jwt_validate_iat"),
+    NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+    ngx_conf_set_flag_slot,
+    NGX_HTTP_LOC_CONF_OFFSET,
+    offsetof(ngx_http_auth_jwt_loc_conf_t, validate.iat),
     NULL },
   { ngx_string("auth_jwt_validate_iss"),
     NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
@@ -804,6 +811,7 @@ ngx_http_auth_jwt_create_loc_conf(ngx_conf_t *cf)
   conf->key.vars = NULL;
   conf->validate.alg = NGX_CONF_UNSET_UINT;
   conf->validate.exp = NGX_CONF_UNSET;
+  conf->validate.iat = NGX_CONF_UNSET;
   conf->validate.iss = NGX_CONF_UNSET;
   conf->validate.sig = NGX_CONF_UNSET;
   conf->validate.sub = NGX_CONF_UNSET;
@@ -875,6 +883,7 @@ ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
   ngx_conf_merge_uint_value(conf->validate.alg,
                             prev->validate.alg, NGX_CONF_UNSET_UINT);
   ngx_conf_merge_value(conf->validate.exp, prev->validate.exp, 1);
+  ngx_conf_merge_value(conf->validate.iat, prev->validate.iat, 0);
   ngx_conf_merge_value(conf->validate.iss, prev->validate.iss, 0);
   ngx_conf_merge_value(conf->validate.sig, prev->validate.sig, 1);
   ngx_conf_merge_value(conf->validate.sub, prev->validate.sub, 0);
@@ -1244,6 +1253,16 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
                     exp, now, exp + cf->leeway);
       ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                     "auth_jwt: token: \"%s\"", (char *)ctx->token);
+      return NGX_ERROR;
+    }
+  }
+
+  /* validate iat claim */
+  if (cf->validate.iat) {
+    time_t iat;
+
+    iat = ngx_http_auth_jwt_get_grant_time(r, ctx->jwt, "iat");
+    if (iat == -1) {
       return NGX_ERROR;
     }
   }
