@@ -8,6 +8,12 @@ jobs:
 
     if: contains(github.event.head_commit.message, 'ci skip') == false
 
+    strategy:
+      matrix:
+        optional:
+          - ''
+          - 'NGX_AUTH_JWK_WITH_GNUTLS'
+
     container:
       image: alpine:latest
 
@@ -19,6 +25,10 @@ jobs:
           cpan -Ti Test::Nginx
         env:
           PERL_MM_USE_DEFAULT: 1
+      - name: Install addional package
+        run: |
+          apk --no-cache add gnutls-dev
+        if: ${{ matrix.optional }}
 
       - name: Add github workspace as safe directory
         run: git config --global --add safe.directory $GITHUB_WORKSPACE
@@ -27,6 +37,9 @@ jobs:
 
       - name: Build
         run: |
+          if [ -n "${NGX_OPTION}" ]; then
+            export "${NGX_OPTION}"=1
+          fi
           nginx_version=$(nginx -v 2>&1 | sed 's/^[^0-9]*//')
           curl -sL -o nginx-${nginx_version}.tar.gz http://nginx.org/download/nginx-${nginx_version}.tar.gz
           tar xf nginx-${nginx_version}.tar.gz
@@ -36,12 +49,18 @@ jobs:
           make
           mkdir -p /usr/lib/nginx/modules
           cp objs/ngx_http_auth_jwt_module.so /usr/lib/nginx/modules/
+        env:
+          NGX_OPTION: ${{ matrix.optional }}
 
       - name: Test
         run: |
+          if [ -n "${NGX_OPTION}" ]; then
+            export "${NGX_OPTION}"=1
+          fi
           export TEST_NGINX_CONF_DIR=${PWD}/t/conf
           export TEST_NGINX_DATA_DIR=${PWD}/t/data
           prove -r t 2> /dev/null
         env:
+          NGX_OPTION: ${{ matrix.optional }}
           TEST_NGINX_LOAD_MODULES: /usr/lib/nginx/modules/ngx_http_auth_jwt_module.so
           TEST_NGINX_SERVROOT: /tmp/servroot
