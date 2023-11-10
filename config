@@ -1,15 +1,30 @@
 
+NGX_AUTH_JWT_TLS_SRCS="$ngx_addon_dir/src/jwt/jwt-openssl.c"
+NGX_AUTH_JWT_TLS_LIBS="-lcrypto -lssl"
+
+if [ -n "$NGX_AUTH_JWK_WITH_GNUTLS" ]; then
+  cat << END >> $NGX_AUTO_CONFIG_H
+
+#ifndef JWK_WITH_GNUTLS
+#define JWK_WITH_GNUTLS 1
+#endif
+
+END
+  NGX_AUTH_JWT_TLS_SRCS="$ngx_addon_dir/src/jwt/jwt-gnutls.c"
+  NGX_AUTH_JWT_TLS_LIBS="-lgnutls"
+fi
+
 ngx_addon_name=ngx_http_auth_jwt_module
 
 ngx_module_type=HTTP
 ngx_module_name=ngx_http_auth_jwt_module
 ngx_module_srcs="$ngx_addon_dir/src/jwt/base64.c \
-                 $ngx_addon_dir/src/jwt/jwt-openssl.c \
+                 $NGX_AUTH_JWT_TLS_SRCS \
                  $ngx_addon_dir/src/jwt/jwt.c \
                  $ngx_addon_dir/src/jwk.c \
                  $ngx_addon_dir/src/ngx_http_auth_jwt_module.c"
 ngx_module_deps=
 ngx_module_incs=
-ngx_module_libs="-lcrypto -ljansson -lssl"
+ngx_module_libs="-ljansson $NGX_AUTH_JWT_TLS_LIBS"
 
 . auto/module

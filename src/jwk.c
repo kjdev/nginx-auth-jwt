@@ -3,6 +3,7 @@
 #include <string.h>
 #include <jansson.h>
 
+#include <ngx_config.h>
 #if !defined(JWK_WITH_OPENSSL) && !defined(JWK_WITH_GNUTLS)
 #define JWK_WITH_OPENSSL 1
 #endif
