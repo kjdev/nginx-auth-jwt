@@ -2,6 +2,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <jansson.h>
+
+#if !defined(JWK_WITH_OPENSSL)
+#define JWK_WITH_OPENSSL 1
+#endif
+
+#if defined(JWK_WITH_OPENSSL)
 #include <openssl/bio.h>
 #include <openssl/buffer.h>
 #include <openssl/evp.h>
@@ -10,6 +16,7 @@
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
 #include <openssl/core_names.h>
 #include <openssl/param_build.h>
+#endif
 #endif
 
 #include "jwk.h"
@@ -63,6 +70,8 @@ static char *jwk_base64_urlencode(const char *data, size_t length)
 {
   char *result = NULL;
   size_t n, i, t;
+
+#if defined(JWK_WITH_OPENSSL)
   BIO *b64, *bio;
   BUF_MEM *mem;
 
@@ -82,6 +91,7 @@ static char *jwk_base64_urlencode(const char *data, size_t length)
   n = mem->length;
 
   BIO_free_all(b64);
+#endif
 
   // urlencode
   for (i = t = 0; i < n; i++) {
@@ -108,7 +118,10 @@ static char *jwk_base64_urldecode(const char *data, size_t *length)
 {
   char *buf, *result = NULL;
   size_t n, i;
+
+#if defined(JWK_WITH_OPENSSL)
   BIO *b64, *bio;
+#endif
 
   *length = 0;
 
@@ -138,6 +151,7 @@ static char *jwk_base64_urldecode(const char *data, size_t *length)
   }
   buf[i] = '\0';
 
+#if defined(JWK_WITH_OPENSSL)
   b64 = BIO_new(BIO_f_base64());
   bio = BIO_new_mem_buf(buf, -1);
 
@@ -153,6 +167,7 @@ static char *jwk_base64_urldecode(const char *data, size_t *length)
   }
 
   BIO_free_all(b64);
+#endif
 
   return result;
 }
@@ -240,7 +255,9 @@ static int jwk_calc_thumbprint(jwk_t *jwk)
 
   str = json_dumps(members, JSON_COMPACT);
 
+#if defined(JWK_WITH_OPENSSL)
   SHA256((unsigned char *) str, strlen(str), digest);
+#endif
 
   free(str);
 
@@ -251,7 +268,9 @@ static int jwk_calc_thumbprint(jwk_t *jwk)
   return 0;
 }
 
+#if defined(JWK_WITH_OPENSSL)
 typedef BIGNUM jwk_key_data_t;
+#endif
 
 static jwk_key_data_t *jwk_key_data_new(const char *data)
 {
@@ -268,9 +287,11 @@ static jwk_key_data_t *jwk_key_data_new(const char *data)
     return NULL;
   }
 
+#if defined(JWK_WITH_OPENSSL)
   result = BN_bin2bn((unsigned char *) str, n, NULL);
 
   free(str);
+#endif
 
   return result;
 }
@@ -278,32 +299,41 @@ static jwk_key_data_t *jwk_key_data_new(const char *data)
 static void jwk_key_data_free(jwk_key_data_t *data)
 {
   if (data) {
+#if defined(JWK_WITH_OPENSSL)
     BN_free(data);
+#endif
   }
 }
 
 typedef struct {
   jwk_key_data_t *n;
   jwk_key_data_t *e;
+#if defined(JWK_WITH_OPENSSL)
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
   EVP_PKEY_CTX *context;
   OSSL_PARAM *param;
 #else
   RSA *context;
 #endif
+#endif
 } jwk_key_rsa_t;
 
 typedef struct {
+#if defined(JWK_WITH_OPENSSL)
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
   EVP_PKEY_CTX *context;
   OSSL_PARAM *param;
 #else
   EC_KEY *context;
 #endif
+#endif
 } jwk_key_ec_t;
 
+#if defined(JWK_WITH_OPENSSL)
 typedef BIO *jwk_key_pubkey_t;
+#endif
 
+#if defined(JWK_WITH_OPENSSL)
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
 static jwk_key_pubkey_t jwk_key_pem_pubkey_new_ossl(EVP_PKEY_CTX *context,
                                                     OSSL_PARAM *param)
@@ -332,6 +362,7 @@ static jwk_key_pubkey_t jwk_key_pem_pubkey_new_ossl(EVP_PKEY_CTX *context,
   return pubkey;
 }
 #endif
+#endif
 
 static jwk_key_pubkey_t jwk_key_pem_pubkey_new(jwk_kty_t type, void *data)
 {
@@ -344,6 +375,7 @@ static jwk_key_pubkey_t jwk_key_pem_pubkey_new(jwk_kty_t type, void *data)
   if (type == JWK_KTY_RSA) {
     jwk_key_rsa_t *rsa = (jwk_key_rsa_t *) data;
 
+#if defined(JWK_WITH_OPENSSL)
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
     pubkey = jwk_key_pem_pubkey_new_ossl(rsa->context, rsa->param);
     if (!pubkey) {
@@ -357,10 +389,12 @@ static jwk_key_pubkey_t jwk_key_pem_pubkey_new(jwk_kty_t type, void *data)
 
     PEM_write_bio_RSA_PUBKEY(pubkey, rsa->context);
 #endif
+#endif
   }
   else if (type == JWK_KTY_EC) {
     jwk_key_ec_t *ec = (jwk_key_ec_t *) data;
 
+#if defined(JWK_WITH_OPENSSL)
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
     pubkey = jwk_key_pem_pubkey_new_ossl(ec->context, ec->param);
     if (!pubkey) {
@@ -373,6 +407,7 @@ static jwk_key_pubkey_t jwk_key_pem_pubkey_new(jwk_kty_t type, void *data)
     }
     PEM_write_bio_EC_PUBKEY(pubkey, ec->context);
 #endif
+#endif
   }
   else {
     return NULL;
@@ -384,7 +419,9 @@ static jwk_key_pubkey_t jwk_key_pem_pubkey_new(jwk_kty_t type, void *data)
 static void jwk_key_pem_pubkey_free(jwk_key_pubkey_t pubkey)
 {
   if (pubkey) {
+#if defined(JWK_WITH_OPENSSL)
     BIO_free(pubkey);
+#endif
   }
 }
 
@@ -396,6 +433,7 @@ static char *jwk_key_pem_pubkey_get(jwk_key_pubkey_t pubkey)
     return NULL;
   }
 
+#if defined(JWK_WITH_OPENSSL)
   {
     BUF_MEM *mem = NULL;
 
@@ -406,6 +444,7 @@ static char *jwk_key_pem_pubkey_get(jwk_key_pubkey_t pubkey)
 
     pem = strndup(mem->data, mem->length);
   }
+#endif
 
   return pem;
 }
@@ -414,16 +453,20 @@ static void jwk_key_rsa_init(jwk_key_rsa_t *rsa)
 {
   rsa->n = NULL;
   rsa->e = NULL;
+
+#if defined(JWK_WITH_OPENSSL)
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
   rsa->context = NULL;
   rsa->param = NULL;
 #else
   rsa->context =NULL;
 #endif
+#endif
 }
 
 static void jwk_key_rsa_deinit(jwk_key_rsa_t *rsa)
 {
+#if defined(JWK_WITH_OPENSSL)
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
   if (rsa->param) {
     OSSL_PARAM_free(rsa->param);
@@ -435,6 +478,7 @@ static void jwk_key_rsa_deinit(jwk_key_rsa_t *rsa)
   if (rsa->context) {
     RSA_free(rsa->context);
   }
+#endif
 #endif
 
   jwk_key_data_free(rsa->n);
@@ -465,6 +509,7 @@ static int jwk_key_rsa_import(jwk_key_rsa_t *rsa, jwk_t *jwk)
   }
   rsa->e = jwk_key_data_new(var);
 
+#if defined(JWK_WITH_OPENSSL)
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
   rsa->context = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, NULL);
   if (!rsa->context) {
@@ -514,6 +559,7 @@ static int jwk_key_rsa_import(jwk_key_rsa_t *rsa, jwk_t *jwk)
   rsa->n = NULL;
   rsa->e = NULL;
 #endif
+#endif
 
   return 0;
 }
@@ -537,14 +583,17 @@ static char *jwk_key_rsa_get(jwk_key_rsa_t *rsa)
 
 static void jwk_key_ec_init(jwk_key_ec_t *ec)
 {
+#if defined(JWK_WITH_OPENSSL)
   ec->context = NULL;
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
   ec->param = NULL;
+#endif
 #endif
 }
 
 static void jwk_key_ec_deinit(jwk_key_ec_t *ec)
 {
+#if defined(JWK_WITH_OPENSSL)
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
   if (ec->param) {
     OSSL_PARAM_free(ec->param);
@@ -556,6 +605,7 @@ static void jwk_key_ec_deinit(jwk_key_ec_t *ec)
   if (ec->context) {
     EC_KEY_free(ec->context);
   }
+#endif
 #endif
 }
 
@@ -598,6 +648,7 @@ static int jwk_key_ec_import(jwk_key_ec_t *ec, jwk_t *jwk)
     return ENOMEM;
   }
 
+#if defined(JWK_WITH_OPENSSL)
   {
     char *pub = NULL;
     size_t pub_size;
@@ -694,6 +745,7 @@ static int jwk_key_ec_import(jwk_key_ec_t *ec, jwk_t *jwk)
 
     free(pub);
   }
+#endif
 
   return 0;
 }
