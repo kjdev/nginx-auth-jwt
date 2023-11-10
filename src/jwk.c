@@ -3,7 +3,7 @@
 #include <string.h>
 #include <jansson.h>
 
-#if !defined(JWK_WITH_OPENSSL)
+#if !defined(JWK_WITH_OPENSSL) && !defined(JWK_WITH_GNUTLS)
 #define JWK_WITH_OPENSSL 1
 #endif
 
@@ -17,9 +17,18 @@
 #include <openssl/core_names.h>
 #include <openssl/param_build.h>
 #endif
+
+#elif defined(JWK_WITH_GNUTLS)
+#include <gnutls/gnutls.h>
+#include <gnutls/abstract.h>
+#include <gnutls/crypto.h>
 #endif
 
 #include "jwk.h"
+
+#ifndef SHA256_DIGEST_LENGTH
+#define SHA256_DIGEST_LENGTH 32
+#endif
 
 /* jwk key type */
 
@@ -91,6 +100,23 @@ static char *jwk_base64_urlencode(const char *data, size_t length)
   n = mem->length;
 
   BIO_free_all(b64);
+
+#elif defined(JWK_WITH_GNUTLS)
+  gnutls_datum_t in = { (unsigned char *) data, length };
+  gnutls_datum_t out = { NULL, 0 };
+
+  if (gnutls_base64_encode2(&in, &out) != GNUTLS_E_SUCCESS
+      || out.data == NULL) {
+    return NULL;
+  }
+
+  result = strndup((char *) out.data, out.size);
+  if (!result) {
+    return NULL;
+  }
+  n = out.size;
+
+  gnutls_free(out.data);
 #endif
 
   // urlencode
@@ -121,6 +147,9 @@ static char *jwk_base64_urldecode(const char *data, size_t *length)
 
 #if defined(JWK_WITH_OPENSSL)
   BIO *b64, *bio;
+
+#elif defined(JWK_WITH_GNUTLS)
+  gnutls_datum_t in = { NULL, 0 }, out = { NULL, 0 };
 #endif
 
   *length = 0;
@@ -167,6 +196,21 @@ static char *jwk_base64_urldecode(const char *data, size_t *length)
   }
 
   BIO_free_all(b64);
+
+#elif defined(JWK_WITH_GNUTLS)
+  in.data = (unsigned char *) buf;
+  in.size = strlen(buf);
+
+  if (gnutls_base64_decode2(&in, &out) == GNUTLS_E_SUCCESS
+      && out.data != NULL) {
+    result = (char *) malloc(out.size + 1);
+    if (result) {
+      memcpy(result, out.data, out.size);
+      result[out.size] = '\0';
+      *length = out.size;
+    }
+    gnutls_free(out.data);
+  }
 #endif
 
   return result;
@@ -189,6 +233,10 @@ static int jwk_calc_thumbprint(jwk_t *jwk)
   json_t *members = NULL;
   size_t count = 0;
   unsigned char digest[SHA256_DIGEST_LENGTH];
+
+#if defined(JWK_WITH_GNUTLS)
+  gnutls_hash_hd_t sha256_ctx;
+#endif
 
   if (!jwk) {
     return EINVAL;
@@ -257,6 +305,14 @@ static int jwk_calc_thumbprint(jwk_t *jwk)
 
 #if defined(JWK_WITH_OPENSSL)
   SHA256((unsigned char *) str, strlen(str), digest);
+
+#elif defined(JWK_WITH_GNUTLS)
+  gnutls_hash_init(&sha256_ctx, GNUTLS_DIG_SHA256);
+
+  gnutls_hash(sha256_ctx, (const unsigned char *) str, strlen(str));
+  gnutls_hash_output(sha256_ctx, digest);
+
+  gnutls_hash_deinit(sha256_ctx, NULL);
 #endif
 
   free(str);
@@ -270,6 +326,35 @@ static int jwk_calc_thumbprint(jwk_t *jwk)
 
 #if defined(JWK_WITH_OPENSSL)
 typedef BIGNUM jwk_key_data_t;
+#elif defined(JWK_WITH_GNUTLS)
+typedef gnutls_datum_t jwk_key_data_t;
+#endif
+
+#if defined(JWK_WITH_GNUTLS)
+static gnutls_datum_t *jwk_key_gnutls_datum_new(char *data, size_t size)
+{
+  gnutls_datum_t *result;
+
+  result = (gnutls_datum_t *) gnutls_malloc(sizeof(gnutls_datum_t));
+  if (!result) {
+    return NULL;
+  }
+
+  result->data = (unsigned char *) data;
+  result->size = size;
+
+  return result;
+}
+
+static void jwk_key_gnutls_datum_free(gnutls_datum_t *data)
+{
+  if (data) {
+    if (data->data) {
+      free(data->data);
+    }
+    gnutls_free(data);
+  }
+}
 #endif
 
 static jwk_key_data_t *jwk_key_data_new(const char *data)
@@ -291,6 +376,13 @@ static jwk_key_data_t *jwk_key_data_new(const char *data)
   result = BN_bin2bn((unsigned char *) str, n, NULL);
 
   free(str);
+
+#elif defined(JWK_WITH_GNUTLS)
+  result = jwk_key_gnutls_datum_new(str, n);
+  if (!result) {
+    free(str);
+    return NULL;
+  }
 #endif
 
   return result;
@@ -301,6 +393,9 @@ static void jwk_key_data_free(jwk_key_data_t *data)
   if (data) {
 #if defined(JWK_WITH_OPENSSL)
     BN_free(data);
+
+#elif defined(JWK_WITH_GNUTLS)
+    jwk_key_gnutls_datum_free(data);
 #endif
   }
 }
@@ -326,11 +421,19 @@ typedef struct {
 #else
   EC_KEY *context;
 #endif
+
+#elif defined(JWK_WITH_GNUTLS)
+  gnutls_ecc_curve_t curve;
+  jwk_key_data_t *x;
+  jwk_key_data_t *y;
+
 #endif
 } jwk_key_ec_t;
 
 #if defined(JWK_WITH_OPENSSL)
 typedef BIO *jwk_key_pubkey_t;
+#elif defined(JWK_WITH_GNUTLS)
+typedef gnutls_pubkey_t jwk_key_pubkey_t;
 #endif
 
 #if defined(JWK_WITH_OPENSSL)
@@ -389,6 +492,21 @@ static jwk_key_pubkey_t jwk_key_pem_pubkey_new(jwk_kty_t type, void *data)
 
     PEM_write_bio_RSA_PUBKEY(pubkey, rsa->context);
 #endif
+
+#elif defined(JWK_WITH_GNUTLS)
+    if (rsa->n == NULL || rsa->e == NULL) {
+      return NULL;
+    }
+
+    if (gnutls_pubkey_init(&pubkey) != GNUTLS_E_SUCCESS) {
+      return NULL;
+    }
+
+    if (gnutls_pubkey_import_rsa_raw(pubkey,
+                                     rsa->n, rsa->e) != GNUTLS_E_SUCCESS) {
+      gnutls_pubkey_deinit(pubkey);
+      return NULL;
+    }
 #endif
   }
   else if (type == JWK_KTY_EC) {
@@ -407,6 +525,22 @@ static jwk_key_pubkey_t jwk_key_pem_pubkey_new(jwk_kty_t type, void *data)
     }
     PEM_write_bio_EC_PUBKEY(pubkey, ec->context);
 #endif
+
+#elif defined(JWK_WITH_GNUTLS)
+    if (ec->curve == GNUTLS_ECC_CURVE_INVALID
+        || ec->x == NULL || ec->y == NULL) {
+      return NULL;
+    }
+
+    if (gnutls_pubkey_init(&pubkey) != GNUTLS_E_SUCCESS) {
+      return NULL;
+    }
+
+    if (gnutls_pubkey_import_ecc_raw(pubkey, ec->curve,
+                                     ec->x, ec->y) != GNUTLS_E_SUCCESS) {
+      gnutls_pubkey_deinit(pubkey);
+      return NULL;
+    }
 #endif
   }
   else {
@@ -421,6 +555,9 @@ static void jwk_key_pem_pubkey_free(jwk_key_pubkey_t pubkey)
   if (pubkey) {
 #if defined(JWK_WITH_OPENSSL)
     BIO_free(pubkey);
+
+#elif defined(JWK_WITH_GNUTLS)
+    gnutls_pubkey_deinit(pubkey);
 #endif
   }
 }
@@ -443,6 +580,28 @@ static char *jwk_key_pem_pubkey_get(jwk_key_pubkey_t pubkey)
     }
 
     pem = strndup(mem->data, mem->length);
+  }
+
+#elif defined(JWK_WITH_GNUTLS)
+  {
+    char *data = NULL;
+    size_t size;
+
+    if (gnutls_pubkey_export(pubkey, GNUTLS_X509_FMT_PEM,
+                             NULL, &size) != GNUTLS_E_SHORT_MEMORY_BUFFER) {
+      return NULL;
+    }
+
+    data = gnutls_malloc(size + 1);
+    if (data) {
+      if (gnutls_pubkey_export(pubkey, GNUTLS_X509_FMT_PEM,
+                               data, &size) == GNUTLS_E_SUCCESS) {
+        data[size] = '\0';
+        pem = strdup(data);
+      }
+
+      gnutls_free(data);
+    }
   }
 #endif
 
@@ -588,6 +747,11 @@ static void jwk_key_ec_init(jwk_key_ec_t *ec)
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
   ec->param = NULL;
 #endif
+
+#elif defined(JWK_WITH_GNUTLS)
+  ec->curve = GNUTLS_ECC_CURVE_INVALID;
+  ec->x = NULL;
+  ec->y = NULL;
 #endif
 }
 
@@ -606,6 +770,10 @@ static void jwk_key_ec_deinit(jwk_key_ec_t *ec)
     EC_KEY_free(ec->context);
   }
 #endif
+
+#elif defined(JWK_WITH_GNUTLS)
+  jwk_key_data_free(ec->x);
+  jwk_key_data_free(ec->y);
 #endif
 }
 
@@ -744,6 +912,33 @@ static int jwk_key_ec_import(jwk_key_ec_t *ec, jwk_t *jwk)
 #endif
 
     free(pub);
+  }
+
+#elif defined(JWK_WITH_GNUTLS)
+  if (strcmp("P-256", crv) == 0) {
+    ec->curve = GNUTLS_ECC_CURVE_SECP256R1;
+  } else if (strcmp("P-384", crv) == 0) {
+    ec->curve = GNUTLS_ECC_CURVE_SECP384R1;
+  } else if (strcmp("P-521", crv) == 0) {
+    ec->curve = GNUTLS_ECC_CURVE_SECP521R1;
+  } else {
+    free(x);
+    free(y);
+    return EPERM;
+  }
+
+  ec->x = jwk_key_gnutls_datum_new(x, x_size);
+  if (!ec->x) {
+    free(x);
+    free(y);
+    return EPERM;
+  }
+
+  ec->y = jwk_key_gnutls_datum_new(y, y_size);
+  if (!ec->y) {
+    free(y);
+    jwk_key_gnutls_datum_free(ec->x);
+    return EPERM;
   }
 #endif
 
