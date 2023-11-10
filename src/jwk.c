@@ -59,86 +59,87 @@ static jwk_kty_t jwk_kty_from(const char *kty)
 
 /* base64 encode/decode */
 
-static char *jwk_base64_urlencode(const char *input, size_t length)
+static char *jwk_base64_urlencode(const char *data, size_t length)
 {
+  char *result = NULL;
+  size_t n, i, t;
   BIO *b64, *bio;
   BUF_MEM *mem;
-  char *data;
-  int i, n, t;
 
   b64 = BIO_new(BIO_f_base64());
   bio = BIO_new(BIO_s_mem());
 
   BIO_set_flags(b64, BIO_FLAGS_BASE64_NO_NL);
   BIO_push(b64, bio);
-  BIO_write(b64, input, length);
+  BIO_write(b64, data, length);
   BIO_flush(b64);
 
   BIO_get_mem_ptr(b64, &mem);
-  data = strndup(mem->data, mem->length);
-  if (!data) {
+  result = strndup(mem->data, mem->length);
+  if (!result) {
     return NULL;
   }
+  n = mem->length;
 
   BIO_free_all(b64);
 
   // urlencode
-  n = strlen(data);
-
   for (i = t = 0; i < n; i++) {
-    switch (data[i]) {
+    switch (result[i]) {
       case '+':
-        data[t++] = '-';
+        result[t++] = '-';
         break;
       case '/':
-        data[t++] = '_';
+        result[t++] = '_';
         break;
       case '=':
         break;
       default:
-        data[t++] = data[i];
+        result[t++] = result[i];
     }
   }
 
-  data[t] = '\0';
+  result[t] = '\0';
 
-  return data;
+  return result;
 }
 
-static char *jwk_base64_urldecode(const char *input, size_t *length)
+static char *jwk_base64_urldecode(const char *data, size_t *length)
 {
+  char *buf, *result = NULL;
+  size_t n, i;
   BIO *b64, *bio;
-  char *data, *out;
-  int i, n;
 
-  // urlencode
-  n = strlen(input);
-  data = alloca(n + 4);
-  if (!data) {
+  *length = 0;
+
+  // urldecode
+  n = strlen(data);
+  buf = alloca(n + 4);
+  if (!buf) {
     return NULL;
   }
   for (i = 0; i < n; i++) {
-    switch (input[i]) {
+    switch (data[i]) {
       case '-':
-        data[i] = '+';
+        buf[i] = '+';
         break;
       case '_':
-        data[i] = '/';
+        buf[i] = '/';
         break;
       default:
-        data[i] = input[i];
+        buf[i] = data[i];
     }
   }
   n = 4 - (i % 4);
   if (n < 4) {
     while (n--) {
-      data[i++] = '=';
+      buf[i++] = '=';
     }
   }
-  data[i] = '\0';
+  buf[i] = '\0';
 
   b64 = BIO_new(BIO_f_base64());
-  bio = BIO_new_mem_buf(data, -1);
+  bio = BIO_new_mem_buf(buf, -1);
 
   BIO_set_flags(b64, BIO_FLAGS_BASE64_NO_NL);
   BIO_push(b64, bio);
@@ -146,17 +147,14 @@ static char *jwk_base64_urldecode(const char *input, size_t *length)
 
   n = (i / 4 * 3) + 1;
 
-  out = calloc(n, sizeof(char));
-  if (!out) {
-    BIO_free_all(b64);
-    return NULL;
+  result = calloc(n, sizeof(char));
+  if (result) {
+    *length = BIO_read(b64, result, n);
   }
-
-  *length = BIO_read(b64, out, n);
 
   BIO_free_all(b64);
 
-  return out;
+  return result;
 }
 
 /* jwk */
@@ -253,11 +251,13 @@ static int jwk_calc_thumbprint(jwk_t *jwk)
   return 0;
 }
 
-static BIGNUM *jwk_key_base64_to_bn(const char *data)
+typedef BIGNUM jwk_key_data_t;
+
+static jwk_key_data_t *jwk_key_data_new(const char *data)
 {
-  BIGNUM *bn = NULL;
   char *str;
   size_t n;
+  jwk_key_data_t *result = NULL;
 
   if (!data) {
     return NULL;
@@ -268,16 +268,47 @@ static BIGNUM *jwk_key_base64_to_bn(const char *data)
     return NULL;
   }
 
-  bn = BN_bin2bn((unsigned char *) str, n, NULL);
+  result = BN_bin2bn((unsigned char *) str, n, NULL);
+
   free(str);
 
-  return bn;
+  return result;
 }
 
-#if OPENSSL_VERSION_NUMBER >= 0x30000000L
-static BIO *jwk_key_pem_pubkey_new(EVP_PKEY_CTX *context, OSSL_PARAM *param)
+static void jwk_key_data_free(jwk_key_data_t *data)
 {
-  BIO *bio = NULL;
+  if (data) {
+    BN_free(data);
+  }
+}
+
+typedef struct {
+  jwk_key_data_t *n;
+  jwk_key_data_t *e;
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+  EVP_PKEY_CTX *context;
+  OSSL_PARAM *param;
+#else
+  RSA *context;
+#endif
+} jwk_key_rsa_t;
+
+typedef struct {
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+  EVP_PKEY_CTX *context;
+  OSSL_PARAM *param;
+#else
+  EC_KEY *context;
+#endif
+} jwk_key_ec_t;
+
+typedef BIO *jwk_key_pubkey_t;
+
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+static jwk_key_pubkey_t jwk_key_pem_pubkey_new_ossl(EVP_PKEY_CTX *context,
+                                                    OSSL_PARAM *param)
+{
+  jwk_key_pubkey_t pubkey = NULL;
   EVP_PKEY *pkey = NULL;
 
   if (EVP_PKEY_fromdata(context, &pkey, EVP_PKEY_PUBLIC_KEY, param) <= 0
@@ -288,52 +319,96 @@ static BIO *jwk_key_pem_pubkey_new(EVP_PKEY_CTX *context, OSSL_PARAM *param)
     return NULL;
   }
 
-  bio = BIO_new(BIO_s_mem());
-  if (!bio) {
+  pubkey = BIO_new(BIO_s_mem());
+  if (!pubkey) {
     EVP_PKEY_free(pkey);
     return NULL;
   }
 
-  PEM_write_bio_PUBKEY(bio, pkey);
+  PEM_write_bio_PUBKEY(pubkey, pkey);
 
   EVP_PKEY_free(pkey);
 
-  return bio;
+  return pubkey;
 }
 #endif
 
-static void jwk_key_pem_pubkey_free(BIO *bio)
+static jwk_key_pubkey_t jwk_key_pem_pubkey_new(jwk_kty_t type, void *data)
 {
-  if (bio) {
-    BIO_free(bio);
-  }
-}
+  jwk_key_pubkey_t pubkey = NULL;
 
-static char *jwk_key_pem_pubkey_get(BIO *bio)
-{
-  BUF_MEM *mem = NULL;
-  char *pem = NULL;
-
-  BIO_get_mem_ptr(bio, &mem);
-  if (!mem) {
+  if (data == NULL) {
     return NULL;
   }
 
-  pem = strndup(mem->data, mem->length);
+  if (type == JWK_KTY_RSA) {
+    jwk_key_rsa_t *rsa = (jwk_key_rsa_t *) data;
+
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+    pubkey = jwk_key_pem_pubkey_new_ossl(rsa->context, rsa->param);
+    if (!pubkey) {
+      return NULL;
+    }
+#else
+    pubkey = BIO_new(BIO_s_mem());
+    if (!pubkey) {
+      return NULL;
+    }
+
+    PEM_write_bio_RSA_PUBKEY(pubkey, rsa->context);
+#endif
+  }
+  else if (type == JWK_KTY_EC) {
+    jwk_key_ec_t *ec = (jwk_key_ec_t *) data;
+
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+    pubkey = jwk_key_pem_pubkey_new_ossl(ec->context, ec->param);
+    if (!pubkey) {
+      return NULL;
+    }
+#else
+    pubkey = BIO_new(BIO_s_mem());
+    if (!pubkey) {
+      return NULL;
+    }
+    PEM_write_bio_EC_PUBKEY(pubkey, ec->context);
+#endif
+  }
+  else {
+    return NULL;
+  }
+
+  return pubkey;
+}
+
+static void jwk_key_pem_pubkey_free(jwk_key_pubkey_t pubkey)
+{
+  if (pubkey) {
+    BIO_free(pubkey);
+  }
+}
+
+static char *jwk_key_pem_pubkey_get(jwk_key_pubkey_t pubkey)
+{
+  char *pem = NULL;
+
+  if (pubkey == NULL) {
+    return NULL;
+  }
+
+  {
+    BUF_MEM *mem = NULL;
+
+    BIO_get_mem_ptr(pubkey, &mem);
+    if (!mem) {
+      return NULL;
+    }
+
+    pem = strndup(mem->data, mem->length);
+  }
 
   return pem;
 }
-
-typedef struct {
-  BIGNUM *n;
-  BIGNUM *e;
-#if OPENSSL_VERSION_NUMBER >= 0x30000000L
-  EVP_PKEY_CTX *context;
-  OSSL_PARAM *param;
-#else
-  RSA *context;
-#endif
-} jwk_key_rsa_t;
 
 static void jwk_key_rsa_init(jwk_key_rsa_t *rsa)
 {
@@ -361,12 +436,9 @@ static void jwk_key_rsa_deinit(jwk_key_rsa_t *rsa)
     RSA_free(rsa->context);
   }
 #endif
-  if (rsa->n) {
-    BN_free(rsa->n);
-  }
-  if (rsa->e) {
-    BN_free(rsa->e);
-  }
+
+  jwk_key_data_free(rsa->n);
+  jwk_key_data_free(rsa->e);
 }
 
 static int jwk_key_rsa_import(jwk_key_rsa_t *rsa, jwk_t *jwk)
@@ -385,13 +457,13 @@ static int jwk_key_rsa_import(jwk_key_rsa_t *rsa, jwk_t *jwk)
   if (!var) {
     return EPERM;
   }
-  rsa->n = jwk_key_base64_to_bn(var);
+  rsa->n = jwk_key_data_new(var);
 
   var = jwk_parameter(jwk, "e");
   if (!var) {
     return EPERM;
   }
-  rsa->e = jwk_key_base64_to_bn(var);
+  rsa->e = jwk_key_data_new(var);
 
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
   rsa->context = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, NULL);
@@ -448,38 +520,20 @@ static int jwk_key_rsa_import(jwk_key_rsa_t *rsa, jwk_t *jwk)
 
 static char *jwk_key_rsa_get(jwk_key_rsa_t *rsa)
 {
-  BIO *bio = NULL;
   char *out = NULL;
+  jwk_key_pubkey_t pubkey = NULL;
 
-#if OPENSSL_VERSION_NUMBER >= 0x30000000L
-  bio = jwk_key_pem_pubkey_new(rsa->context, rsa->param);
-  if (!bio) {
-    return NULL;
-  }
-#else
-  bio = BIO_new(BIO_s_mem());
-  if (!bio) {
+  pubkey = jwk_key_pem_pubkey_new(JWK_KTY_RSA, rsa);
+  if (!pubkey) {
     return NULL;
   }
 
-  PEM_write_bio_RSA_PUBKEY(bio, rsa->context);
-#endif
+  out = jwk_key_pem_pubkey_get(pubkey);
 
-  out = jwk_key_pem_pubkey_get(bio);
-
-  jwk_key_pem_pubkey_free(bio);
+  jwk_key_pem_pubkey_free(pubkey);
 
   return out;
 }
-
-typedef struct {
-#if OPENSSL_VERSION_NUMBER >= 0x30000000L
-  EVP_PKEY_CTX *context;
-  OSSL_PARAM *param;
-#else
-  EC_KEY *context;
-#endif
-} jwk_key_ec_t;
 
 static void jwk_key_ec_init(jwk_key_ec_t *ec)
 {
@@ -508,8 +562,8 @@ static void jwk_key_ec_deinit(jwk_key_ec_t *ec)
 static int jwk_key_ec_import(jwk_key_ec_t *ec, jwk_t *jwk)
 {
   const char *crv, *var;
-  char *x = NULL, *y = NULL, *pub = NULL;
-  size_t x_size, y_size, pub_size;
+  char *x = NULL, *y = NULL;
+  size_t x_size, y_size;
 
   if (!ec || !jwk) {
     return EINVAL;
@@ -544,121 +598,119 @@ static int jwk_key_ec_import(jwk_key_ec_t *ec, jwk_t *jwk)
     return ENOMEM;
   }
 
-  pub_size = 1 + x_size + y_size;
-  pub = calloc(pub_size, sizeof(char));
-  if (!pub) {
-    return ENOMEM;
-  }
+  {
+    char *pub = NULL;
+    size_t pub_size;
 
-  pub[0] = POINT_CONVERSION_UNCOMPRESSED;
-  memcpy(pub + 1, x, x_size);
-  memcpy(pub + 1 + x_size, y ,y_size);
+    pub_size = 1 + x_size + y_size;
+    pub = calloc(pub_size, sizeof(char));
+    if (!pub) {
+      return ENOMEM;
+    }
 
-  free(x);
-  free(y);
+    pub[0] = POINT_CONVERSION_UNCOMPRESSED;
+    memcpy(pub + 1, x, x_size);
+    memcpy(pub + 1 + x_size, y ,y_size);
+
+    free(x);
+    free(y);
 
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
-  ec->context = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL);
-  if (!ec->context) {
-    free(pub);
-    return ENOMEM;
-  }
-
-  if (EVP_PKEY_fromdata_init(ec->context) <= 0) {
-    free(pub);
-    return EPERM;
-  }
-
-  {
-    OSSL_PARAM_BLD *param_bld = NULL;
-
-    param_bld = OSSL_PARAM_BLD_new();
-    if (!param_bld) {
-      free(pub);
-      return ENOMEM;
-    }
-
-    if (!OSSL_PARAM_BLD_push_utf8_string(param_bld, OSSL_PKEY_PARAM_GROUP_NAME,
-                                         crv, 0)) {
-      free(pub);
-      OSSL_PARAM_BLD_free(param_bld);
-      return EPERM;
-    }
-
-    if (!OSSL_PARAM_BLD_push_octet_string(param_bld, OSSL_PKEY_PARAM_PUB_KEY,
-                                          pub, pub_size)) {
-      free(pub);
-      OSSL_PARAM_BLD_free(param_bld);
-      return EPERM;
-    }
-
-    ec->param = OSSL_PARAM_BLD_to_param(param_bld);
-    if (!ec->param) {
-      free(pub);
-      OSSL_PARAM_BLD_free(param_bld);
-      return ENOMEM;
-    }
-
-    OSSL_PARAM_BLD_free(param_bld);
-  }
-#else
-  {
-    int nid;
-    const unsigned char *pub_in = (unsigned char *) pub;
-
-    if (strcmp("P-256", crv) == 0) {
-      nid = NID_X9_62_prime256v1;
-    }
-    else if (strcmp("P-384", crv) == 0) {
-      nid = NID_secp384r1;
-    }
-    else if (strcmp("P-521", crv) == 0) {
-      nid = NID_secp521r1;
-    }
-    else {
-      free(pub);
-      return EPERM;
-    }
-
-    ec->context = EC_KEY_new_by_curve_name(nid);
+    ec->context = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL);
     if (!ec->context) {
       free(pub);
       return ENOMEM;
     }
 
-    if (!o2i_ECPublicKey(&ec->context, &pub_in, pub_size)) {
+    if (EVP_PKEY_fromdata_init(ec->context) <= 0) {
       free(pub);
       return EPERM;
     }
-  }
+
+    {
+      OSSL_PARAM_BLD *param_bld = NULL;
+
+      param_bld = OSSL_PARAM_BLD_new();
+      if (!param_bld) {
+        free(pub);
+        return ENOMEM;
+      }
+
+      if (!OSSL_PARAM_BLD_push_utf8_string(param_bld,
+                                           OSSL_PKEY_PARAM_GROUP_NAME,
+                                           crv, 0)) {
+        free(pub);
+        OSSL_PARAM_BLD_free(param_bld);
+        return EPERM;
+      }
+
+      if (!OSSL_PARAM_BLD_push_octet_string(param_bld, OSSL_PKEY_PARAM_PUB_KEY,
+                                            pub, pub_size)) {
+        free(pub);
+        OSSL_PARAM_BLD_free(param_bld);
+        return EPERM;
+      }
+
+      ec->param = OSSL_PARAM_BLD_to_param(param_bld);
+      if (!ec->param) {
+        free(pub);
+        OSSL_PARAM_BLD_free(param_bld);
+        return ENOMEM;
+      }
+
+      OSSL_PARAM_BLD_free(param_bld);
+    }
+#else
+    {
+      int nid;
+      const unsigned char *pub_in = (unsigned char *) pub;
+
+      if (strcmp("P-256", crv) == 0) {
+        nid = NID_X9_62_prime256v1;
+      }
+      else if (strcmp("P-384", crv) == 0) {
+        nid = NID_secp384r1;
+      }
+      else if (strcmp("P-521", crv) == 0) {
+        nid = NID_secp521r1;
+      }
+      else {
+        free(pub);
+        return EPERM;
+      }
+
+      ec->context = EC_KEY_new_by_curve_name(nid);
+      if (!ec->context) {
+        free(pub);
+        return ENOMEM;
+      }
+
+      if (!o2i_ECPublicKey(&ec->context, &pub_in, pub_size)) {
+        free(pub);
+        return EPERM;
+      }
+    }
 #endif
 
-  free(pub);
+    free(pub);
+  }
 
   return 0;
 }
 
 static char *jwk_key_ec_get(jwk_key_ec_t *ec)
 {
-  BIO *bio = NULL;
   char *out = NULL;
+  jwk_key_pubkey_t pubkey = NULL;
 
-#if OPENSSL_VERSION_NUMBER >= 0x30000000L
-  bio = jwk_key_pem_pubkey_new(ec->context, ec->param);
-  if (!bio) {
+  pubkey = jwk_key_pem_pubkey_new(JWK_KTY_EC, ec);
+  if (!pubkey) {
     return NULL;
   }
-#else
-  bio = BIO_new(BIO_s_mem());
-  if (!bio) {
-    return NULL;
-  }
-  PEM_write_bio_EC_PUBKEY(bio, ec->context);
-#endif
 
-  out = jwk_key_pem_pubkey_get(bio);
+  out = jwk_key_pem_pubkey_get(pubkey);
 
-  jwk_key_pem_pubkey_free(bio);
+  jwk_key_pem_pubkey_free(pubkey);
 
   return out;
 }
@@ -686,7 +738,9 @@ static int jwk_export_key(jwk_t *jwk)
 
     if (jwk_key_rsa_import(&rsa, jwk) == 0) {
       jwk->key = jwk_key_rsa_get(&rsa);
-      jwk->key_len = strlen(jwk->key);
+      if (jwk->key) {
+        jwk->key_len = strlen(jwk->key);
+      }
     }
 
     jwk_key_rsa_deinit(&rsa);
@@ -698,7 +752,9 @@ static int jwk_export_key(jwk_t *jwk)
 
     if (jwk_key_ec_import(&ec, jwk) == 0) {
       jwk->key = jwk_key_ec_get(&ec);
-      jwk->key_len = strlen(jwk->key);
+      if (jwk->key) {
+        jwk->key_len = strlen(jwk->key);
+      }
     }
 
     jwk_key_ec_deinit(&ec);
