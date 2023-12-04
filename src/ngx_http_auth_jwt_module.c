@@ -20,6 +20,7 @@ static char *ngx_http_auth_jwt_conf_set_key_file(ngx_conf_t *cf, ngx_command_t *
 static char *ngx_http_auth_jwt_conf_set_key_request(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
 static char *ngx_http_auth_jwt_conf_set_revocation_subs(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+static char *ngx_http_auth_jwt_conf_set_revocation_kids(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
 static ngx_int_t ngx_http_auth_jwt_pre_conf(ngx_conf_t *cf);
 static ngx_int_t ngx_http_auth_jwt_post_conf(ngx_conf_t *cf);
@@ -40,6 +41,7 @@ typedef struct {
   ngx_flag_t enabled;
   ngx_str_t realm;
   json_t *revocation_subs;
+  json_t *revocation_kids;
   struct {
     ngx_array_t *files;
     ngx_array_t *requests;
@@ -73,6 +75,7 @@ typedef struct {
   jwt_t *jwt;
   json_t *keys;
   json_t *revocation_subs;
+  json_t *revocation_kids;
 } ngx_http_auth_jwt_ctx_t;
 
 typedef struct {
@@ -137,6 +140,12 @@ static ngx_command_t ngx_http_auth_jwt_commands[] = {
   { ngx_string("auth_jwt_revocation_list_sub"),
     NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
     ngx_http_auth_jwt_conf_set_revocation_subs,
+    NGX_HTTP_LOC_CONF_OFFSET,
+    0,
+    NULL },
+  { ngx_string("auth_jwt_revocation_list_kid"),
+    NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+    ngx_http_auth_jwt_conf_set_revocation_kids,
     NGX_HTTP_LOC_CONF_OFFSET,
     0,
     NULL },
@@ -722,6 +731,45 @@ ngx_http_auth_jwt_conf_set_revocation_subs(ngx_conf_t *cf,
 }
 
 static char *
+ngx_http_auth_jwt_conf_set_revocation_kids(ngx_conf_t *cf,
+                                           ngx_command_t *cmd, void *conf)
+{
+  char *file;
+  ngx_http_auth_jwt_loc_conf_t *lcf;
+  ngx_str_t *value;
+
+  lcf = conf;
+  value = cf->args->elts;
+
+  if (value[1].len == 0) {
+    return "is empty";
+  }
+
+  if (ngx_conf_full_name(cf->cycle, &value[1], 1) != NGX_OK) {
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                       "\"%V\" directive failed to get full name: \"%V\"",
+                       &cmd->name, &value[1]);
+    return NGX_CONF_ERROR;
+  }
+
+  file = (char *) ngx_http_auth_jwt_strdup(cf->pool,
+                                           value[1].data, value[1].len);
+  if (file == NULL) {
+    return "failed to allocate file";
+  }
+
+  if (ngx_http_auth_jwt_fill_list_object_by_file(&lcf->revocation_kids, file)
+      != 0) {
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                       "\"%V\" directive failed to load file: \"%s\"",
+                       &cmd->name ,file);
+    return NGX_CONF_ERROR;
+  }
+
+  return NGX_CONF_OK;
+}
+
+static char *
 ngx_http_auth_jwt_conf_set_key_file(ngx_conf_t *cf,
                                     ngx_command_t *cmd, void *conf)
 {
@@ -917,6 +965,7 @@ ngx_http_auth_jwt_create_loc_conf(ngx_conf_t *cf)
   conf->key.requests = NULL;
   conf->key.vars = NULL;
   conf->revocation_subs = NULL;
+  conf->revocation_kids = NULL;
   conf->validate.alg = NGX_CONF_UNSET_UINT;
   conf->validate.exp = NGX_CONF_UNSET;
   conf->validate.iat = NGX_CONF_UNSET;
@@ -1015,6 +1064,15 @@ ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
     }
   }
 
+  if (prev->revocation_kids) {
+    if (conf->revocation_kids) {
+      json_object_update_missing(conf->revocation_kids, prev->revocation_kids);
+    }
+    else {
+      conf->revocation_kids = json_copy(prev->revocation_kids);
+    }
+  }
+
   if (prev->key.vars) {
     if (conf->key.vars) {
       json_object_update_missing(conf->key.vars, prev->key.vars);
@@ -1054,6 +1112,10 @@ ngx_http_auth_jwt_exit_process(ngx_cycle_t *cycle)
   if (conf && conf->revocation_subs) {
     json_delete(conf->revocation_subs);
   }
+
+  if (conf && conf->revocation_kids) {
+    json_delete(conf->revocation_kids);
+  }
 }
 
 static void
@@ -1075,6 +1137,10 @@ ngx_http_auth_jwt_cleanup(void *data)
 
   if (ctx->revocation_subs) {
     json_delete(ctx->revocation_subs);
+  }
+
+  if (ctx->revocation_kids) {
+    json_delete(ctx->revocation_kids);
   }
 }
 
@@ -1518,6 +1584,33 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
     }
   }
 
+  kid = jwt_get_header(ctx->jwt, "kid");
+
+  if (ctx->revocation_kids != NULL) {
+    json_t *value = NULL;
+    const char * revocation_kid;
+
+    // note that revocation_kids turn on kid to required header
+    if (kid == NULL || strcmp(kid, "") == 0) {
+      ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
+                    "auth_jwt: rejected due to kid cannot be empty"
+                    " when revocation_kids set", kid);
+      return NGX_ERROR;
+    }
+
+    json_object_foreach(ctx->revocation_kids, revocation_kid, value) {
+      if (strcmp(kid, revocation_kid) == 0) {
+        ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
+                      "auth_jwt: rejected due to kid in revocation list"
+                      ": kid=\"%s\"", revocation_kid);
+        // todo: it seems to be good,
+        // if we add DEBUG log with short dump of value,
+        // where we could find a reason of revocation.
+        return NGX_ERROR;
+      }
+    }
+  }
+
   /* validate signature */
   if (!cf->validate.sig) {
     ctx->verified = 1;
@@ -1530,7 +1623,6 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
     return NGX_ERROR;
   }
 
-  kid = jwt_get_header(ctx->jwt, "kid");
   if (kid) {
     key = ngx_http_auth_jwt_key_get(ctx->keys, kid);
   }
@@ -1672,6 +1764,10 @@ ngx_http_auth_jwt_handler(ngx_http_request_t *r, ngx_int_t phase)
 
   if (cf->revocation_subs) {
     ctx->revocation_subs = json_copy(cf->revocation_subs);
+  }
+
+  if (cf->revocation_kids) {
+    ctx->revocation_kids = json_copy(cf->revocation_kids);
   }
 
   /* parse jwt token */

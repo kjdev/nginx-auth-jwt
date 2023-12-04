@@ -306,6 +306,34 @@ Parameter value can contain only filepath to json file with objects. Every objec
 > }
 > ```
 
+```
+Syntax: auth_jwt_revocation_list_kid file;
+Default: -
+Context: http, server, location
+```
+
+Specifies a file with list of JWT kid headers that deny authentication.
+Parameter value can contain only filepath to json file with objects. Every object should have key(jwt header kid) and any additional value, if it needed.
+
+> File format:
+> ```
+> {"kid": any}
+> ``` 
+
+> Example of config:
+> ```
+> auth_jwt_revocation_list_kid /path/to/lockedkidlist.json;`
+> ``` 
+
+> Example of file:
+> ```
+> {
+>   "test2kid": {"revocation_reason": "unknown"}
+> }
+> ```
+
+**Note:** as we know, kid is OPTIONAL parameter by [rfc7515](https://datatracker.ietf.org/doc/html/rfc7515#page-11), but if you are using auth_jwt_revocation_list_kid directive - it means, that kid will grow to **REQUIRED**
+
 
 ### Embedded Variables
 
