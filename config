@@ -7,6 +7,7 @@ ngx_module_srcs="$ngx_addon_dir/src/jwt/base64.c \
                  $ngx_addon_dir/src/jwt/jwt-openssl.c \
                  $ngx_addon_dir/src/jwt/jwt.c \
                  $ngx_addon_dir/src/jwk.c \
+                 $ngx_addon_dir/src/jwt_requirement_operators.c \
                  $ngx_addon_dir/src/ngx_http_auth_jwt_module.c"
 ngx_module_deps=
 ngx_module_incs=
