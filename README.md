@@ -342,6 +342,78 @@ if it needed.
 but if you are using auth_jwt_revocation_list_kid directive - it means,
 that kid will grow to **REQUIRED**
 
+```
+Syntax: auth_jwt_require_claim claim_name operator $variable;
+Default: -
+Context: http, server, location
+```
+
+Specifies a requirement for claim in jwt token.
+
+> Example:
+> ```
+> http {
+>   map $request_method $required_jwt_roles {
+>     "GET"  '["SERVICE", "ADMINISTRATORS"]';
+>   }
+>   server {
+>     ...
+>     location = /verify {
+>       set $expected_jti '"3949117906"';
+>       set $expected_iat 1697461112;
+>       set $expected_less_than_iat 1697461110;
+>
+>       auth_jwt_require_claim jti eq $expected_jti;
+>       auth_jwt_require_claim iat eq $expected_iat;
+>       auth_jwt_require iat lt $expected_less_than_iat;
+>       auth_jwt_require_claim roles intersect $required_jwt_roles;
+>     }
+>     ...
+> ```
+
+Several `auth_jwt_require_claim` directives can be specified
+on the same level for "AND" logic.
+
+`claim_name` - should be a name of jwt claim. (sub,roles,scope)
+
+`operator` - should be one of:
+```
+eq = equal operator
+ne = not equal operator
+gt = greater than operator
+ge = greater or equal operator
+lt = less than operator
+le = less or equal operator
+intersect = has intersection operator
+nintersect = has not intersection operator
+in = in array operator
+nin = not in array operator
+```
+1. Two integer or real values are equal if their contained numeric values
+   are equal. An integer value is never equal to a real value, though.
+2. Two strings are equal if their contained UTF-8 strings are equal,
+   byte by byte. Unicode comparison algorithms are not implemented.
+3. Two arrays are equal if they have the same number of elements and each
+   element in the first array is equal to the corresponding element
+   in the second array.
+4. Two objects are equal if they have exactly the same keys and the value
+   for each key in the first object is equal to the value of the
+   corresponding key in the second object.
+
+`$variable` - should be a nginx variable, that provide
+required json[^json] value.
+
+> Examples:
+> ```
+> set $expected_jti '"3949117906"';
+> set $expected_iat 1697461112;
+> set $expected_less_than_iat 1697461110;
+> map $request_method $role_map_verify {
+>   "GET"  '["SERVICE", "ADMINISTRATORS"]';
+> }
+> ```
+
+[^json]: containing only single value is pretty valid.
 
 ### Embedded Variables
 
