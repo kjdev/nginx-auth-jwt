@@ -19,6 +19,8 @@ static char *ngx_http_auth_jwt_conf_set_claim(ngx_conf_t *cf, ngx_command_t *cmd
 static char *ngx_http_auth_jwt_conf_set_key_file(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static char *ngx_http_auth_jwt_conf_set_key_request(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
+static char *ngx_http_auth_jwt_conf_set_revocation_subs(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+
 static ngx_int_t ngx_http_auth_jwt_pre_conf(ngx_conf_t *cf);
 static ngx_int_t ngx_http_auth_jwt_post_conf(ngx_conf_t *cf);
 static void *ngx_http_auth_jwt_create_loc_conf(ngx_conf_t *cf);
@@ -37,6 +39,7 @@ typedef struct {
   ngx_int_t phase;
   ngx_flag_t enabled;
   ngx_str_t realm;
+  json_t *revocation_subs;
   struct {
     ngx_array_t *files;
     ngx_array_t *requests;
@@ -69,6 +72,7 @@ typedef struct {
   unsigned int payload_len;
   jwt_t *jwt;
   json_t *keys;
+  json_t *revocation_subs;
 } ngx_http_auth_jwt_ctx_t;
 
 typedef struct {
@@ -127,6 +131,12 @@ static ngx_command_t ngx_http_auth_jwt_commands[] = {
   { ngx_string("auth_jwt"),
     NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE12,
     ngx_http_auth_jwt_conf_set_token_variable,
+    NGX_HTTP_LOC_CONF_OFFSET,
+    0,
+    NULL },
+  { ngx_string("auth_jwt_revocation_list_sub"),
+    NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+    ngx_http_auth_jwt_conf_set_revocation_subs,
     NGX_HTTP_LOC_CONF_OFFSET,
     0,
     NULL },
@@ -335,6 +345,43 @@ ngx_http_auth_jwt_key_import_file(json_t **object, const char *path,
   }
 
   return rc;
+}
+
+static int
+ngx_http_auth_jwt_fill_list_object_by_file(json_t **object, const char *path)
+{
+  json_t *keyval = NULL;
+  const char *key = NULL;
+  json_t *value = NULL;
+
+  if (path == NULL) {
+    return 1;
+  }
+
+  keyval = json_load_file(path, 0, NULL);
+  if (keyval == NULL) {
+    return 1;
+  }
+
+  if (!json_is_object(keyval)) {
+    return 1;
+  }
+
+  if (*object == NULL) {
+    *object = json_object();
+  }
+
+  json_object_foreach((json_t *) keyval, key, value) {
+    if (!key) {
+      continue;
+    }
+
+    json_object_set_new(*object, key, json_copy(value));
+  }
+
+  json_delete(keyval);
+
+  return 0;
 }
 
 static int
@@ -636,6 +683,45 @@ ngx_http_auth_jwt_conf_set_claim(ngx_conf_t *cf,
 }
 
 static char *
+ngx_http_auth_jwt_conf_set_revocation_subs(ngx_conf_t *cf,
+                                       ngx_command_t *cmd, void *conf)
+{
+  char *file;
+  ngx_http_auth_jwt_loc_conf_t *lcf;
+  ngx_str_t *value;
+
+  lcf = conf;
+  value = cf->args->elts;
+
+  if (value[1].len == 0) {
+    return "is empty";
+  }
+
+  if (ngx_conf_full_name(cf->cycle, &value[1], 1) != NGX_OK) {
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                       "\"%V\" directive failed to get full name: \"%V\"",
+                       &cmd->name, &value[1]);
+    return NGX_CONF_ERROR;
+  }
+
+  file = (char *) ngx_http_auth_jwt_strdup(cf->pool,
+                                           value[1].data, value[1].len);
+  if (file == NULL) {
+    return "failed to allocate file";
+  }
+
+  if (ngx_http_auth_jwt_fill_list_object_by_file(&lcf->revocation_subs, file)
+      != 0) {
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                       "\"%V\" directive failed to load file: \"%s\"",
+                       &cmd->name ,file);
+    return NGX_CONF_ERROR;
+  }
+
+  return NGX_CONF_OK;
+}
+
+static char *
 ngx_http_auth_jwt_conf_set_key_file(ngx_conf_t *cf,
                                     ngx_command_t *cmd, void *conf)
 {
@@ -830,6 +916,7 @@ ngx_http_auth_jwt_create_loc_conf(ngx_conf_t *cf)
   conf->key.files = NULL;
   conf->key.requests = NULL;
   conf->key.vars = NULL;
+  conf->revocation_subs = NULL;
   conf->validate.alg = NGX_CONF_UNSET_UINT;
   conf->validate.exp = NGX_CONF_UNSET;
   conf->validate.iat = NGX_CONF_UNSET;
@@ -919,6 +1006,15 @@ ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
   ngx_conf_merge_value(conf->enabled, prev->enabled, 0);
   ngx_conf_merge_str_value(conf->realm, prev->realm, "");
 
+  if (prev->revocation_subs) {
+    if (conf->revocation_subs) {
+      json_object_update_missing(conf->revocation_subs, prev->revocation_subs);
+    }
+    else {
+      conf->revocation_subs = json_copy(prev->revocation_subs);
+    }
+  }
+
   if (prev->key.vars) {
     if (conf->key.vars) {
       json_object_update_missing(conf->key.vars, prev->key.vars);
@@ -954,6 +1050,10 @@ ngx_http_auth_jwt_exit_process(ngx_cycle_t *cycle)
   if (conf && conf->key.vars) {
     json_delete(conf->key.vars);
   }
+
+  if (conf && conf->revocation_subs) {
+    json_delete(conf->revocation_subs);
+  }
 }
 
 static void
@@ -971,6 +1071,10 @@ ngx_http_auth_jwt_cleanup(void *data)
 
   if (ctx->keys) {
     json_delete(ctx->keys);
+  }
+
+  if (ctx->revocation_subs) {
+    json_delete(ctx->revocation_subs);
   }
 }
 
@@ -1393,6 +1497,27 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
     }
   }
 
+  if (ctx->revocation_subs != NULL) {
+    json_t *value = NULL;
+    const char * revocation_sub;
+    const char *jwt_sub = jwt_get_grant(ctx->jwt, "sub");
+    if (jwt_sub == NULL){
+      return NGX_ERROR;
+    }
+
+    json_object_foreach(ctx->revocation_subs, revocation_sub, value) {
+      if (strcmp(jwt_sub, revocation_sub) == 0) {
+        ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
+                      "auth_jwt: rejected due to sub in revocation list"
+                      ": sub=\"%s\"", jwt_sub);
+        // todo: it seems to be good,
+        // if we add DEBUG log with short dump of value,
+        // where we could find a reason of locking.
+        return NGX_ERROR;
+      }
+    }
+  }
+
   /* validate signature */
   if (!cf->validate.sig) {
     ctx->verified = 1;
@@ -1543,6 +1668,10 @@ ngx_http_auth_jwt_handler(ngx_http_request_t *r, ngx_int_t phase)
     ngx_log_error(NGX_LOG_CRIT, r->connection->log, 0,
                   "auth_jwt: failed to allocate token");
     return NGX_HTTP_INTERNAL_SERVER_ERROR;
+  }
+
+  if (cf->revocation_subs) {
+    ctx->revocation_subs = json_copy(cf->revocation_subs);
   }
 
   /* parse jwt token */

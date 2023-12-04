@@ -278,6 +278,35 @@ Specifies the phase to be processed.
 > In the case of a call from a subrequest, `auth_jwt_key_request` cannot
 > be processed. (nested in-memory subrequest)
 
+```
+Syntax: auth_jwt_revocation_list_sub file;
+Default: -
+Context: http, server, location
+```
+
+Specifies a file with list of JWT sub claims that deny authentication.
+Parameter value can contain only filepath to json file with objects. Every object should have key(jwt sub) and any additional value, if it needed.
+
+> File format:
+> ```
+> {"sub": any}
+> ``` 
+
+> Example of config:
+> ```
+> auth_jwt_revocation_list_sub /path/to/lockeduserslist.json;`
+> ``` 
+
+> Example of file: 
+> ```
+> {
+>   "lockedsub1": {"locked_at": "2023"},
+>   "lockedsub2": {"locked_reason": "bad user"},
+>   "lockedsub3": {"any_other_property": 1}
+> }
+> ```
+
+
 ### Embedded Variables
 
 The module supports embedded variables:
