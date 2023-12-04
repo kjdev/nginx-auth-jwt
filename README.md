@@ -397,6 +397,15 @@ Several `auth_jwt_require_claim` directives can be specified on the same level f
 > ```
 > *json, containing only single value is pretty valid.
 
+```
+Syntax: auth_jwt_require_header header_name operator $variable;
+Default: -
+Context: http, server, location
+```
+Specifies a requirement for header in jwt token.
+
+All possibilities of this directive are the same as for ```auth_jwt_require_claim``` above.
+
 ### Embedded Variables
 
 The module supports embedded variables:
