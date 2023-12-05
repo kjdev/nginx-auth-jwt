@@ -6,6 +6,7 @@
 #include "jwt/jwt.h"
 #include "jwt/jwt-private.h"
 #include "jwk.h"
+#include "jwt_requirement_operators.h"
 
 #define NGX_HTTP_AUTH_JWT_CLAIM_VAR_PREFIX "jwt_claim_"
 #define NGX_HTTP_AUTH_JWT_HEADER_VAR_PREFIX "jwt_header_"
@@ -18,6 +19,12 @@ static char *ngx_http_auth_jwt_conf_set_token_variable(ngx_conf_t *cf, ngx_comma
 static char *ngx_http_auth_jwt_conf_set_claim(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static char *ngx_http_auth_jwt_conf_set_key_file(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static char *ngx_http_auth_jwt_conf_set_key_request(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+
+static char *ngx_http_auth_jwt_conf_set_revocation_subs(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+static char *ngx_http_auth_jwt_conf_set_revocation_kids(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+
+static char *ngx_http_auth_jwt_conf_set_require_claim(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+static char *ngx_http_auth_jwt_conf_set_require_header(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
 static ngx_int_t ngx_http_auth_jwt_pre_conf(ngx_conf_t *cf);
 static ngx_int_t ngx_http_auth_jwt_post_conf(ngx_conf_t *cf);
@@ -37,6 +44,8 @@ typedef struct {
   ngx_int_t phase;
   ngx_flag_t enabled;
   ngx_str_t realm;
+  json_t *revocation_subs;
+  json_t *revocation_kids;
   struct {
     ngx_array_t *files;
     ngx_array_t *requests;
@@ -52,6 +61,8 @@ typedef struct {
     ngx_flag_t sub;
     ngx_http_complex_value_t *aud;
     ngx_http_complex_value_t *nonce;
+    ngx_array_t *claim_requirements;
+    ngx_array_t *header_requirements;
   } validate;
 } ngx_http_auth_jwt_loc_conf_t;
 
@@ -69,7 +80,24 @@ typedef struct {
   unsigned int payload_len;
   jwt_t *jwt;
   json_t *keys;
+  json_t *revocation_subs;
+  json_t *revocation_kids;
+  ngx_array_t *claim_requirements;
+  ngx_array_t *header_requirements;
 } ngx_http_auth_jwt_ctx_t;
+
+typedef struct  {
+  u_char *value;
+  ngx_str_t name;
+  ngx_str_t operator;
+} ngx_http_auth_jwt_ctx_require_t;
+
+typedef struct {
+  ngx_int_t value;
+  ngx_str_t name;
+  ngx_str_t operator;
+} ngx_http_auth_jwt_require_t;
+
 
 typedef struct {
   ngx_int_t index;
@@ -101,6 +129,20 @@ static ngx_conf_enum_t ngx_http_auth_jwt_phases[] = {
   { ngx_null_string, 0 }
 };
 
+static char *ngx_http_auth_jwt_require_operators[] = {
+  NGX_HTTP_AUTH_JWT_REQUIRE_EQUAL_OPERATOR,
+  NGX_HTTP_AUTH_JWT_REQUIRE_NOT_EQUAL_OPERATOR,
+  NGX_HTTP_AUTH_JWT_REQUIRE_GREATER_THAN_OPERATOR,
+  NGX_HTTP_AUTH_JWT_REQUIRE_GREATER_OR_EQUAL_OPERATOR,
+  NGX_HTTP_AUTH_JWT_REQUIRE_LESS_THAN_OPERATOR,
+  NGX_HTTP_AUTH_JWT_REQUIRE_LESS_OR_EQUAL_OPERATOR,
+  NGX_HTTP_AUTH_JWT_REQUIRE_INTERSECTION_OPERATOR,
+  NGX_HTTP_AUTH_JWT_REQUIRE_NOT_INTERSECTION_OPERATOR,
+  NGX_HTTP_AUTH_JWT_REQUIRE_IN_OPERATOR,
+  NGX_HTTP_AUTH_JWT_REQUIRE_NOT_IN_OPERATOR,
+  NULL,
+};
+
 static ngx_http_variable_t ngx_http_auth_jwt_vars[] = {
   { ngx_string(NGX_HTTP_AUTH_JWT_HEADER_VAR_PREFIX),
     NULL,
@@ -127,6 +169,30 @@ static ngx_command_t ngx_http_auth_jwt_commands[] = {
   { ngx_string("auth_jwt"),
     NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE12,
     ngx_http_auth_jwt_conf_set_token_variable,
+    NGX_HTTP_LOC_CONF_OFFSET,
+    0,
+    NULL },
+  { ngx_string("auth_jwt_revocation_list_sub"),
+    NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+    ngx_http_auth_jwt_conf_set_revocation_subs,
+    NGX_HTTP_LOC_CONF_OFFSET,
+    0,
+    NULL },
+  { ngx_string("auth_jwt_revocation_list_kid"),
+    NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+    ngx_http_auth_jwt_conf_set_revocation_kids,
+    NGX_HTTP_LOC_CONF_OFFSET,
+    0,
+    NULL },
+  { ngx_string("auth_jwt_require_claim"),
+    NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE3,
+    ngx_http_auth_jwt_conf_set_require_claim,
+    NGX_HTTP_LOC_CONF_OFFSET,
+    0,
+    NULL },
+  { ngx_string("auth_jwt_require_header"),
+    NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE3,
+    ngx_http_auth_jwt_conf_set_require_header,
     NGX_HTTP_LOC_CONF_OFFSET,
     0,
     NULL },
@@ -335,6 +401,43 @@ ngx_http_auth_jwt_key_import_file(json_t **object, const char *path,
   }
 
   return rc;
+}
+
+static int
+ngx_http_auth_jwt_fill_list_object_by_file(json_t **object, const char *path)
+{
+  json_t *keyval = NULL;
+  const char *key = NULL;
+  json_t *value = NULL;
+
+  if (path == NULL) {
+    return 1;
+  }
+
+  keyval = json_load_file(path, 0, NULL);
+  if (keyval == NULL) {
+    return 1;
+  }
+
+  if (!json_is_object(keyval)) {
+    return 1;
+  }
+
+  if (*object == NULL) {
+    *object = json_object();
+  }
+
+  json_object_foreach((json_t *) keyval, key, value) {
+    if (!key) {
+      continue;
+    }
+
+    json_object_set_new(*object, key, json_copy(value));
+  }
+
+  json_delete(keyval);
+
+  return 0;
 }
 
 static int
@@ -636,6 +739,84 @@ ngx_http_auth_jwt_conf_set_claim(ngx_conf_t *cf,
 }
 
 static char *
+ngx_http_auth_jwt_conf_set_revocation_subs(ngx_conf_t *cf,
+                                           ngx_command_t *cmd, void *conf)
+{
+  char *file;
+  ngx_http_auth_jwt_loc_conf_t *lcf;
+  ngx_str_t *value;
+
+  lcf = conf;
+  value = cf->args->elts;
+
+  if (value[1].len == 0) {
+    return "is empty";
+  }
+
+  if (ngx_conf_full_name(cf->cycle, &value[1], 1) != NGX_OK) {
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                       "\"%V\" directive failed to get full name: \"%V\"",
+                       &cmd->name, &value[1]);
+    return NGX_CONF_ERROR;
+  }
+
+  file = (char *) ngx_http_auth_jwt_strdup(cf->pool,
+                                           value[1].data, value[1].len);
+  if (file == NULL) {
+    return "failed to allocate file";
+  }
+
+  if (ngx_http_auth_jwt_fill_list_object_by_file(&lcf->revocation_subs, file)
+      != 0) {
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                       "\"%V\" directive failed to load file: \"%s\"",
+                       &cmd->name ,file);
+    return NGX_CONF_ERROR;
+  }
+
+  return NGX_CONF_OK;
+}
+
+static char *
+ngx_http_auth_jwt_conf_set_revocation_kids(ngx_conf_t *cf,
+                                           ngx_command_t *cmd, void *conf)
+{
+  char *file;
+  ngx_http_auth_jwt_loc_conf_t *lcf;
+  ngx_str_t *value;
+
+  lcf = conf;
+  value = cf->args->elts;
+
+  if (value[1].len == 0) {
+    return "is empty";
+  }
+
+  if (ngx_conf_full_name(cf->cycle, &value[1], 1) != NGX_OK) {
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                       "\"%V\" directive failed to get full name: \"%V\"",
+                       &cmd->name, &value[1]);
+    return NGX_CONF_ERROR;
+  }
+
+  file = (char *) ngx_http_auth_jwt_strdup(cf->pool,
+                                           value[1].data, value[1].len);
+  if (file == NULL) {
+    return "failed to allocate file";
+  }
+
+  if (ngx_http_auth_jwt_fill_list_object_by_file(&lcf->revocation_kids, file)
+      != 0) {
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                       "\"%V\" directive failed to load file: \"%s\"",
+                       &cmd->name ,file);
+    return NGX_CONF_ERROR;
+  }
+
+  return NGX_CONF_OK;
+}
+
+static char *
 ngx_http_auth_jwt_conf_set_key_file(ngx_conf_t *cf,
                                     ngx_command_t *cmd, void *conf)
 {
@@ -710,6 +891,95 @@ ngx_http_auth_jwt_conf_set_key_file(ngx_conf_t *cf,
   }
 
   return NGX_CONF_OK;
+}
+
+static char *
+ngx_http_auth_jwt_conf_set_require(ngx_conf_t *cf, ngx_array_t ** requirements)
+{
+  ngx_str_t *value;
+  ngx_http_auth_jwt_require_t *require;
+
+  value = cf->args->elts;
+
+  if (cf->args->nelts != 4) {
+    return "invalid params count in require";
+  }
+
+  if (*requirements == NULL) {
+    *requirements = ngx_array_create(cf->pool, 1, sizeof(*require));
+    if (requirements == NULL) {
+      return "failed to allocate memory for require";
+    }
+  }
+
+  require = ngx_array_push(*requirements);
+  if (require == NULL) {
+    return "failed to allocate item for require";
+  }
+
+  if (value[1].len != 0) {
+    require->name=value[1];
+  }
+  else {
+    return "first argument should not be empty";
+  }
+  if (value[2].len != 0 /* && value[2].data not in ... */) {
+    ngx_flag_t invalid_operator = 1;
+    for (int i = 0; ngx_http_auth_jwt_require_operators[i] != NULL; i++) {
+      if (strcmp(ngx_http_auth_jwt_require_operators[i], (char *)value[2].data)
+          == 0){
+        invalid_operator = 0;
+        break;
+      }
+    }
+    if (invalid_operator == 1) {
+      return "second argument should be one of available require operators";
+    }
+    require->operator=value[2];
+  }
+  else {
+    return "second argument should not be empty";
+  }
+
+  if (value[3].len != 0 && value[3].data[0] == '$') {
+    value[3].data++;
+    value[3].len--;
+
+    require->value = ngx_http_get_variable_index(cf, &value[3]);
+    if (require->value == NGX_ERROR) {
+      return "no value variables";
+    }
+  }
+  else {
+    return "third argument should be variable";
+  }
+
+  return NGX_CONF_OK;
+}
+
+static char *
+ngx_http_auth_jwt_conf_set_require_claim(ngx_conf_t *cf,
+                                         ngx_command_t *cmd, void *conf)
+{
+  ngx_http_auth_jwt_loc_conf_t *lcf;
+
+  lcf = conf;
+  char *x
+    = ngx_http_auth_jwt_conf_set_require(cf,
+                                         &(lcf->validate.claim_requirements));
+
+  return x;
+}
+
+static char *
+ngx_http_auth_jwt_conf_set_require_header(ngx_conf_t *cf,
+                                          ngx_command_t *cmd, void *conf)
+{
+  ngx_http_auth_jwt_loc_conf_t *lcf;
+
+  lcf = conf;
+  return ngx_http_auth_jwt_conf_set_require(cf,
+                                            &lcf->validate.header_requirements);
 }
 
 static char *
@@ -830,6 +1100,10 @@ ngx_http_auth_jwt_create_loc_conf(ngx_conf_t *cf)
   conf->key.files = NULL;
   conf->key.requests = NULL;
   conf->key.vars = NULL;
+  conf->revocation_subs = NULL;
+  conf->revocation_kids = NULL;
+  conf->validate.claim_requirements = NULL;
+  conf->validate.header_requirements = NULL;
   conf->validate.alg = NGX_CONF_UNSET_UINT;
   conf->validate.exp = NGX_CONF_UNSET;
   conf->validate.iat = NGX_CONF_UNSET;
@@ -878,6 +1152,56 @@ ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
     }
   }
 
+  if (conf->validate.claim_requirements == NULL
+      || conf->validate.claim_requirements->nelts == 0) {
+    conf->validate.claim_requirements = prev->validate.claim_requirements;
+  }
+  else if (prev->validate.claim_requirements
+           && prev->validate.claim_requirements->nelts) {
+    ngx_uint_t i, len, n;
+    ngx_http_auth_jwt_require_t *require, *var;
+
+    len = conf->validate.claim_requirements->nelts;
+    n = prev->validate.claim_requirements->nelts;
+
+    ngx_array_push_n(conf->validate.claim_requirements, n);
+
+    require = conf->validate.claim_requirements->elts;
+    var = prev->validate.claim_requirements->elts;
+
+    for (i = 0; i < len; i++) {
+      require[n + i] = require[i];
+    }
+    for (i = 0; i < n; i++) {
+      require[i] = var[i];
+    }
+  }
+
+  if (conf->validate.header_requirements == NULL
+      || conf->validate.header_requirements->nelts == 0) {
+    conf->validate.header_requirements = prev->validate.header_requirements;
+  }
+  else if (prev->validate.header_requirements
+           && prev->validate.header_requirements->nelts) {
+    ngx_uint_t i, len, n;
+    ngx_http_auth_jwt_require_t *require, *var;
+
+    len = conf->validate.header_requirements->nelts;
+    n = prev->validate.header_requirements->nelts;
+
+    ngx_array_push_n(conf->validate.header_requirements, n);
+
+    require = conf->validate.header_requirements->elts;
+    var = prev->validate.header_requirements->elts;
+
+    for (i = 0; i < len; i++) {
+      require[n + i] = require[i];
+    }
+    for (i = 0; i < n; i++) {
+      require[i] = var[i];
+    }
+  }
+
   if (conf->key.requests == NULL || conf->key.requests->nelts == 0) {
     conf->key.requests = prev->key.requests;
   }
@@ -919,6 +1243,24 @@ ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
   ngx_conf_merge_value(conf->enabled, prev->enabled, 0);
   ngx_conf_merge_str_value(conf->realm, prev->realm, "");
 
+  if (prev->revocation_subs) {
+    if (conf->revocation_subs) {
+      json_object_update_missing(conf->revocation_subs, prev->revocation_subs);
+    }
+    else {
+      conf->revocation_subs = json_copy(prev->revocation_subs);
+    }
+  }
+
+  if (prev->revocation_kids) {
+    if (conf->revocation_kids) {
+      json_object_update_missing(conf->revocation_kids, prev->revocation_kids);
+    }
+    else {
+      conf->revocation_kids = json_copy(prev->revocation_kids);
+    }
+  }
+
   if (prev->key.vars) {
     if (conf->key.vars) {
       json_object_update_missing(conf->key.vars, prev->key.vars);
@@ -954,6 +1296,14 @@ ngx_http_auth_jwt_exit_process(ngx_cycle_t *cycle)
   if (conf && conf->key.vars) {
     json_delete(conf->key.vars);
   }
+
+  if (conf && conf->revocation_subs) {
+    json_delete(conf->revocation_subs);
+  }
+
+  if (conf && conf->revocation_kids) {
+    json_delete(conf->revocation_kids);
+  }
 }
 
 static void
@@ -971,6 +1321,14 @@ ngx_http_auth_jwt_cleanup(void *data)
 
   if (ctx->keys) {
     json_delete(ctx->keys);
+  }
+
+  if (ctx->revocation_subs) {
+    json_delete(ctx->revocation_subs);
+  }
+
+  if (ctx->revocation_kids) {
+    json_delete(ctx->revocation_kids);
   }
 }
 
@@ -1173,6 +1531,52 @@ ngx_http_auth_jwt_load_keys(ngx_http_request_t *r,
 
     if (ctx->subrequest > 0) {
       return NGX_AGAIN;
+    }
+  }
+
+  return NGX_OK;
+}
+
+static ngx_int_t
+ngx_http_auth_jwt_load_requirements(ngx_http_request_t *r,
+                                    ngx_array_t **requirements,
+                                    ngx_array_t **ctx_requirements)
+{
+  if (*requirements != NULL) {
+    ngx_uint_t i;
+    ngx_http_auth_jwt_require_t *require;
+    ngx_http_auth_jwt_ctx_require_t *ctx_require;
+
+    require = (*requirements)->elts;
+
+    for (i = 0; i < (*requirements)->nelts; i++) {
+      ngx_http_variable_value_t *v;
+
+      v = ngx_http_get_indexed_variable(r, require[i].value);
+      if (v == NULL || v->not_found) {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                      "auth_jwt: require variable specified was not provided");
+        return NGX_ERROR;
+      }
+
+      if (*ctx_requirements == NULL) {
+        *ctx_requirements = ngx_array_create(r->pool, 1, sizeof(*ctx_require));
+        if (*ctx_requirements == NULL) {
+          ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                        "auth_jwt: failed to allocate requirements");
+          return NGX_ERROR;
+        }
+      }
+      ctx_require = ngx_array_push(*ctx_requirements);
+      if (ctx_require == NULL) {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                      "auth_jwt: failed to push context require");
+        return NGX_ERROR;
+      }
+
+      ctx_require->value = ngx_http_auth_jwt_strdup(r->pool, v->data, v->len);
+      ctx_require->operator= require[i].operator;
+      ctx_require->name = require[i].name;
     }
   }
 
@@ -1393,6 +1797,143 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
     }
   }
 
+  if (ctx->revocation_subs != NULL) {
+    json_t *value = NULL;
+    const char * revocation_sub;
+    const char *jwt_sub = jwt_get_grant(ctx->jwt, "sub");
+    if (jwt_sub == NULL){
+      return NGX_ERROR;
+    }
+
+    json_object_foreach(ctx->revocation_subs, revocation_sub, value) {
+      if (strcmp(jwt_sub, revocation_sub) == 0) {
+        ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
+                      "auth_jwt: rejected due to sub in revocation list"
+                      ": sub=\"%s\"", jwt_sub);
+        // todo: it seems to be good,
+        // if we add DEBUG log with short dump of value,
+        // where we could find a reason of locking.
+        return NGX_ERROR;
+      }
+    }
+  }
+
+  kid = jwt_get_header(ctx->jwt, "kid");
+
+  if (ctx->revocation_kids != NULL) {
+    json_t *value = NULL;
+    const char * revocation_kid;
+
+    // note that revocation_kids turn on kid to required header
+    if (kid == NULL || strcmp(kid, "") == 0) {
+      ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
+                    "auth_jwt: rejected due to kid cannot be empty"
+                    " when revocation_kids set", kid);
+      return NGX_ERROR;
+    }
+
+    json_object_foreach(ctx->revocation_kids, revocation_kid, value) {
+      if (strcmp(kid, revocation_kid) == 0) {
+        ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
+                      "auth_jwt: rejected due to kid in revocation list"
+                      ": kid=\"%s\"", revocation_kid);
+        // todo: it seems to be good,
+        // if we add DEBUG log with short dump of value,
+        // where we could find a reason of revocation.
+        return NGX_ERROR;
+      }
+    }
+  }
+
+  if (ctx->claim_requirements != NULL) {
+    ngx_uint_t i;
+    ngx_http_auth_jwt_ctx_require_t *ctx_require;
+    ctx_require = ctx->claim_requirements->elts;
+    for (i = 0; i < ctx->claim_requirements->nelts; i++) {
+      char *jwt_claim = NULL;
+      json_t *jwt_claim_json_data = NULL, *expected_json = NULL;
+      ngx_int_t is_valid;
+
+      jwt_claim = jwt_get_grants_json(ctx->jwt,
+                                      (char *) ctx_require[i].name.data);
+      if (jwt_claim == NULL) {
+        return NGX_ERROR;
+      }
+      jwt_claim_json_data = json_loads(jwt_claim, JSON_DECODE_ANY, NULL);
+      if (jwt_claim_json_data == NULL) {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                      "auth_jwt: failed to json_load jwt claim");
+        free(jwt_claim);
+        return NGX_ERROR;
+      }
+      expected_json = json_loads((char *)(ctx_require[i].value),
+                                 JSON_DECODE_ANY, NULL);
+      if (expected_json == NULL) {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                      "auth_jwt: failed to json_load jwt claim requirement");
+        free(jwt_claim);
+        return NGX_ERROR;
+      }
+      is_valid = ngx_http_auth_jwt_validate_requirement_by_operator(
+        (char *) ctx_require[i].operator.data, jwt_claim_json_data,
+        expected_json);
+      if (is_valid != NGX_OK) {
+        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
+                      "auth_jwt: failed requirement for \"%s\""
+                      ":  \"%s\" is not \"%s\" \"%s\"",
+                      (char *) ctx_require[i].name.data, jwt_claim,
+                      (char *) ctx_require[i].operator.data,
+                      ctx_require[i].value);
+        free(jwt_claim);
+        return NGX_ERROR;
+      }
+    }
+  }
+
+  if (ctx->header_requirements != NULL) {
+    ngx_uint_t i;
+    ngx_http_auth_jwt_ctx_require_t *ctx_require;
+    ctx_require = ctx->header_requirements->elts;
+    for (i = 0; i < ctx->header_requirements->nelts; i++) {
+      json_t *jwt_claim_json_data = NULL, *expected_json = NULL;
+      char *jwt_header = NULL;
+      ngx_int_t is_valid;
+
+      jwt_header = jwt_get_headers_json(ctx->jwt,
+                                        (char *) ctx_require[i].name.data);
+      if (jwt_header == NULL) {
+        return NGX_ERROR;
+      }
+      jwt_claim_json_data = json_loads(jwt_header, JSON_DECODE_ANY, NULL);
+      if (jwt_claim_json_data == NULL) {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                      "auth_jwt: failed to json_load jwt header");
+        return NGX_ERROR;
+      }
+      expected_json = json_loads((char *) (ctx_require[i].value),
+                                 JSON_DECODE_ANY, NULL);
+      if (expected_json == NULL) {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                      "auth_jwt: failed to json_load jwt header requirement");
+        free(jwt_header);
+        return NGX_ERROR;
+      }
+      is_valid = ngx_http_auth_jwt_validate_requirement_by_operator(
+        (char *) ctx_require[i].operator.data, jwt_claim_json_data,
+        expected_json);
+      if (is_valid != NGX_OK) {
+        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
+                      "auth_jwt: failed requirement for \"%s\""
+                      ":  \"%s\" is not \"%s\" \"%s\"",
+                      (char *) ctx_require[i].name.data, jwt_header,
+                      (char *) ctx_require[i].operator.data,
+                      ctx_require[i].value);
+        free(jwt_header);
+        return NGX_ERROR;
+      }
+    }
+  }
+
   /* validate signature */
   if (!cf->validate.sig) {
     ctx->verified = 1;
@@ -1405,7 +1946,6 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
     return NGX_ERROR;
   }
 
-  kid = jwt_get_header(ctx->jwt, "kid");
   if (kid) {
     key = ngx_http_auth_jwt_key_get(ctx->keys, kid);
   }
@@ -1543,6 +2083,26 @@ ngx_http_auth_jwt_handler(ngx_http_request_t *r, ngx_int_t phase)
     ngx_log_error(NGX_LOG_CRIT, r->connection->log, 0,
                   "auth_jwt: failed to allocate token");
     return NGX_HTTP_INTERNAL_SERVER_ERROR;
+  }
+
+  if (cf->revocation_subs) {
+    ctx->revocation_subs = json_copy(cf->revocation_subs);
+  }
+
+  if (cf->revocation_kids) {
+    ctx->revocation_kids = json_copy(cf->revocation_kids);
+  }
+
+  if (ngx_http_auth_jwt_load_requirements(r, &cf->validate.claim_requirements,
+                                          &ctx->claim_requirements)
+      == NGX_ERROR) {
+    return ngx_http_auth_jwt_http_unauthorized_error();
+  }
+
+  if (ngx_http_auth_jwt_load_requirements(r, &cf->validate.header_requirements,
+                                          &ctx->header_requirements)
+      == NGX_ERROR) {
+    return ngx_http_auth_jwt_http_unauthorized_error();
   }
 
   /* parse jwt token */
