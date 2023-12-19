@@ -185,14 +185,6 @@ Several `auth_jwt_key_request` directives can be specified on the same level.
 > ```
 
 ```
-Syntax: auth_jwt_validate_aud string;
-Default: -
-Context: http, server, location
-```
-
-Validating the aud JWT claim contains a value.
-
-```
 Syntax: auth_jwt_validate_exp on | off;
 Default: auth_jwt_validate_exp on;
 Context: http, server, location
