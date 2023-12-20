@@ -56,7 +56,6 @@ typedef struct {
     ngx_flag_t iat;
     ngx_flag_t nbf;
     ngx_flag_t sig;
-    ngx_flag_t sub;
     ngx_array_t *claim_requirements;
     ngx_array_t *header_requirements;
   } validate;
@@ -232,12 +231,6 @@ static ngx_command_t ngx_http_auth_jwt_commands[] = {
     ngx_conf_set_flag_slot,
     NGX_HTTP_LOC_CONF_OFFSET,
     offsetof(ngx_http_auth_jwt_loc_conf_t, validate.sig),
-    NULL },
-  { ngx_string("auth_jwt_validate_sub"),
-    NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
-    ngx_conf_set_flag_slot,
-    NGX_HTTP_LOC_CONF_OFFSET,
-    offsetof(ngx_http_auth_jwt_loc_conf_t, validate.sub),
     NULL },
   ngx_null_command
 };
@@ -1102,7 +1095,6 @@ ngx_http_auth_jwt_create_loc_conf(ngx_conf_t *cf)
   conf->validate.iat = NGX_CONF_UNSET;
   conf->validate.nbf = NGX_CONF_UNSET;
   conf->validate.sig = NGX_CONF_UNSET;
-  conf->validate.sub = NGX_CONF_UNSET;
 
   conf->enabled = NGX_CONF_UNSET;
 
@@ -1223,7 +1215,6 @@ ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
   ngx_conf_merge_value(conf->validate.iat, prev->validate.iat, 0);
   ngx_conf_merge_value(conf->validate.nbf, prev->validate.nbf, 0);
   ngx_conf_merge_value(conf->validate.sig, prev->validate.sig, 1);
-  ngx_conf_merge_value(conf->validate.sub, prev->validate.sub, 0);
 
   ngx_conf_merge_value(conf->enabled, prev->enabled, 0);
   ngx_conf_merge_str_value(conf->realm, prev->realm, "");
@@ -1636,13 +1627,6 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
   }
 
   algorithm = jwt_get_alg(ctx->jwt);
-
-  /* validate sub claim */
-  if (cf->validate.sub && !jwt_get_grant(ctx->jwt, "sub")) {
-    ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                  "auth_jwt: rejected due to missing claim: sub");
-    return NGX_ERROR;
-  }
 
   /* validate exp claim */
   if (cf->validate.exp) {
