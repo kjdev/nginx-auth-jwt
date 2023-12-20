@@ -5,6 +5,7 @@
 extern "C" {
 #endif
 
+#include <jansson.h>
 #include <ngx_core.h>
 #include "jwt/jwt.h"
 #include "jwt/jwt-private.h"
