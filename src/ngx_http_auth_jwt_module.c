@@ -52,7 +52,6 @@ typedef struct {
     json_t *vars;
   } key;
   struct {
-    ngx_uint_t alg;
     ngx_flag_t exp;
     ngx_flag_t iat;
     ngx_flag_t iss;
@@ -109,20 +108,6 @@ typedef struct {
 
 typedef const char *(*auth_jwt_get)(jwt_t *jwt, const char *key);
 typedef char *(*auth_jwt_get_json)(jwt_t *jwt, const char *key);
-
-static ngx_conf_enum_t ngx_http_auth_jwt_algs[] = {
-  { ngx_string("none"),  JWT_ALG_NONE  },
-  { ngx_string("HS256"), JWT_ALG_HS256 },
-  { ngx_string("HS384"), JWT_ALG_HS384 },
-  { ngx_string("HS512"), JWT_ALG_HS512 },
-  { ngx_string("RS256"), JWT_ALG_RS256 },
-  { ngx_string("RS384"), JWT_ALG_RS384 },
-  { ngx_string("RS512"), JWT_ALG_RS512 },
-  { ngx_string("ES256"), JWT_ALG_ES256 },
-  { ngx_string("ES384"), JWT_ALG_ES384 },
-  { ngx_string("ES512"), JWT_ALG_ES512 },
-  { ngx_null_string, 0 }
-};
 
 static ngx_conf_enum_t ngx_http_auth_jwt_phases[] = {
   { ngx_string("PREACCESS"), NGX_HTTP_PREACCESS_PHASE },
@@ -227,12 +212,6 @@ static ngx_command_t ngx_http_auth_jwt_commands[] = {
     NGX_HTTP_LOC_CONF_OFFSET,
     offsetof(ngx_http_auth_jwt_loc_conf_t, phase),
     &ngx_http_auth_jwt_phases },
-  { ngx_string("auth_jwt_validate_alg"),
-    NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
-    ngx_conf_set_enum_slot,
-    NGX_HTTP_LOC_CONF_OFFSET,
-    offsetof(ngx_http_auth_jwt_loc_conf_t, validate.alg),
-    &ngx_http_auth_jwt_algs },
   { ngx_string("auth_jwt_validate_aud"),
     NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
     ngx_http_set_complex_value_slot,
@@ -1140,7 +1119,6 @@ ngx_http_auth_jwt_create_loc_conf(ngx_conf_t *cf)
   conf->revocation_kids = NULL;
   conf->validate.claim_requirements = NULL;
   conf->validate.header_requirements = NULL;
-  conf->validate.alg = NGX_CONF_UNSET_UINT;
   conf->validate.exp = NGX_CONF_UNSET;
   conf->validate.iat = NGX_CONF_UNSET;
   conf->validate.iss = NGX_CONF_UNSET;
@@ -1265,8 +1243,6 @@ ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
 
   ngx_conf_merge_value(conf->phase, prev->phase, NGX_HTTP_ACCESS_PHASE);
 
-  ngx_conf_merge_uint_value(conf->validate.alg,
-                            prev->validate.alg, NGX_CONF_UNSET_UINT);
   ngx_conf_merge_value(conf->validate.exp, prev->validate.exp, 1);
   ngx_conf_merge_value(conf->validate.iat, prev->validate.iat, 0);
   ngx_conf_merge_value(conf->validate.iss, prev->validate.iss, 0);
@@ -1686,27 +1662,7 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
     return NGX_ERROR;
   }
 
-  /* validate algorithm */
   algorithm = jwt_get_alg(ctx->jwt);
-
-  if (cf->validate.alg != NGX_CONF_UNSET_UINT) {
-    if (cf->validate.alg != algorithm) {
-      ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
-                    "auth_jwt: rejected due to unacceptable algorithm"
-                    ": equals expected=%s actual=%s",
-                    jwt_alg_str(cf->validate.alg), jwt_alg_str(algorithm));
-      return NGX_ERROR;
-    }
-    if (algorithm == JWT_ALG_NONE) {
-      cf->validate.sig = 0;
-    }
-  }
-  else if (algorithm == JWT_ALG_NONE) {
-    /* rejected JWT_ALG_NONE as algorithm */
-    ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
-                  "auth_jwt: rejected due to none algorithm");
-    return NGX_ERROR;
-  }
 
   /* validate iss claim */
   if (cf->validate.iss && !jwt_get_grant(ctx->jwt, "iss")) {
@@ -2021,7 +1977,23 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
       free(jwt_header);
       json_delete(jwt_header_json);
       json_delete(expected_json);
+
+      if (ngx_strcmp("alg", ctx_require[i].name) == 0) {
+        // NOTE: allow NONE algorithm when passing alg requirements
+        if (algorithm == JWT_ALG_NONE) {
+          cf->validate.sig = 0;
+        }
+        // NOTE: do not verify algorithm if alg requirements are met
+        algorithm = JWT_ALG_TERM;
+      }
     }
+  }
+
+  /* rejected JWT_ALG_NONE as algorithm */
+  if (algorithm == JWT_ALG_NONE) {
+    ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
+                  "auth_jwt: rejected due to none algorithm");
+    return NGX_ERROR;
   }
 
   /* validate signature */
