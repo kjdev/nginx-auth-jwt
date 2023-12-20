@@ -185,14 +185,6 @@ Several `auth_jwt_key_request` directives can be specified on the same level.
 > ```
 
 ```
-Syntax: auth_jwt_validate_alg HS256 | HS384 | HS512 | RS256 | RS384 | RS512 | ES256 | ES384 | ES512;
-Default: -
-Context: http, server, location
-```
-
-Determines whether to validating JWT algorithm.
-
-```
 Syntax: auth_jwt_validate_aud string;
 Default: -
 Context: http, server, location
