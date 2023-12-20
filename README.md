@@ -201,14 +201,6 @@ Context: http, server, location
 Determines whether to validating the iat JWT claim.
 
 ```
-Syntax: auth_jwt_validate_iss on | off;
-Default: auth_jwt_validate_iss off;
-Context: http, server, location
-```
-
-Determines whether to validating the iss JWT claim.
-
-```
 Syntax: auth_jwt_validate_nbf on | off;
 Default: auth_jwt_validate_nbf off;
 Context: http, server, location
