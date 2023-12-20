@@ -15,7 +15,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test1_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_validate_alg HS256;
+  auth_jwt_require_header alg eq HS256;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
 --- request
@@ -35,7 +35,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test1_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/keys.json keyval;
-  auth_jwt_validate_alg HS256;
+  auth_jwt_require_header alg eq HS256;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
 --- request
@@ -55,7 +55,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test4_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_validate_alg HS256;
+  auth_jwt_require_header alg eq HS256;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
 --- request
@@ -66,8 +66,7 @@ X-Jwt-Claim-Sub:
 X-Jwt-Claim-Aud:
 X-Jwt-Claim-Email:
 --- error_code: 401
---- error_log: auth_jwt: rejected due to unacceptable algorithm: equals expected=HS256 actual=RS256
---- log_level: info
+--- error_log: auth_jwt: rejected due to alg header requirement: ""RS256"" is not "eq" "HS256"
 
 === valid HS384 in jwks
 --- http_config
@@ -77,7 +76,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test2_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_validate_alg HS384;
+  auth_jwt_require_header alg eq HS384;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
 --- request
@@ -97,7 +96,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test2_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/keys.json keyval;
-  auth_jwt_validate_alg HS384;
+  auth_jwt_require_header alg eq HS384;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
 --- request
@@ -117,7 +116,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test5_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_validate_alg HS384;
+  auth_jwt_require_header alg eq HS384;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
 --- request
@@ -128,8 +127,7 @@ X-Jwt-Claim-Sub:
 X-Jwt-Claim-Aud:
 X-Jwt-Claim-Email:
 --- error_code: 401
---- error_log: auth_jwt: rejected due to unacceptable algorithm: equals expected=HS384 actual=RS384
---- log_level: info
+--- error_log: auth_jwt: rejected due to alg header requirement: ""RS384"" is not "eq" "HS384"
 
 === valid HS512 in jwks
 --- http_config
@@ -139,7 +137,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test3_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_validate_alg HS512;
+  auth_jwt_require_header alg eq HS512;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
 --- request
@@ -159,7 +157,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test3_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/keys.json keyval;
-  auth_jwt_validate_alg HS512;
+  auth_jwt_require_header alg eq HS512;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
 --- request
@@ -179,7 +177,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test6_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_validate_alg HS512;
+  auth_jwt_require_header alg eq HS512;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
 --- request
@@ -190,8 +188,7 @@ X-Jwt-Claim-Sub:
 X-Jwt-Claim-Aud:
 X-Jwt-Claim-Email:
 --- error_code: 401
---- error_log: auth_jwt: rejected due to unacceptable algorithm: equals expected=HS512 actual=RS512
---- log_level: info
+--- error_log: auth_jwt: rejected due to alg header requirement: ""RS512"" is not "eq" "HS512"
 
 === valid RS256 in jwks
 --- http_config
@@ -201,7 +198,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test4_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_validate_alg RS256;
+  auth_jwt_require_header alg eq RS256;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
 --- request
@@ -221,7 +218,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test4_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/keys.json keyval;
-  auth_jwt_validate_alg RS256;
+  auth_jwt_require_header alg eq RS256;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
 --- request
@@ -241,7 +238,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test1_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_validate_alg RS256;
+  auth_jwt_require_header alg eq RS256;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
 --- request
@@ -252,8 +249,7 @@ X-Jwt-Claim-Sub:
 X-Jwt-Claim-Aud:
 X-Jwt-Claim-Email:
 --- error_code: 401
---- error_log: auth_jwt: rejected due to unacceptable algorithm: equals expected=RS256 actual=HS256
---- log_level: info
+--- error_log: auth_jwt: rejected due to alg header requirement: ""HS256"" is not "eq" "RS256"
 
 === valid RS384 in jwks
 --- http_config
@@ -263,7 +259,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test5_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_validate_alg RS384;
+  auth_jwt_require_header alg eq RS384;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
 --- request
@@ -283,7 +279,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test5_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/keys.json keyval;
-  auth_jwt_validate_alg RS384;
+  auth_jwt_require_header alg eq RS384;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
 --- request
@@ -303,7 +299,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test2_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_validate_alg RS384;
+  auth_jwt_require_header alg eq RS384;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
 --- request
@@ -314,8 +310,7 @@ X-Jwt-Claim-Sub:
 X-Jwt-Claim-Aud:
 X-Jwt-Claim-Email:
 --- error_code: 401
---- error_log: auth_jwt: rejected due to unacceptable algorithm: equals expected=RS384 actual=HS384
---- log_level: info
+--- error_log: auth_jwt: rejected due to alg header requirement: ""HS384"" is not "eq" "RS384"
 
 === valid RS512 in jwks
 --- http_config
@@ -325,7 +320,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test6_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_validate_alg RS512;
+  auth_jwt_require_header alg eq RS512;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
 --- request
@@ -345,7 +340,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test6_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/keys.json keyval;
-  auth_jwt_validate_alg RS512;
+  auth_jwt_require_header alg eq RS512;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
 --- request
@@ -365,7 +360,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test3_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_validate_alg RS512;
+  auth_jwt_require_header alg eq RS512;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
 --- request
@@ -376,8 +371,7 @@ X-Jwt-Claim-Sub:
 X-Jwt-Claim-Aud:
 X-Jwt-Claim-Email:
 --- error_code: 401
---- error_log: auth_jwt: rejected due to unacceptable algorithm: equals expected=RS512 actual=HS512
---- log_level: info
+--- error_log: auth_jwt: rejected due to alg header requirement: ""HS512"" is not "eq" "RS512"
 
 === ES256 in jwks
 --- http_config
@@ -387,7 +381,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test7_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_validate_alg ES256;
+  auth_jwt_require_header alg eq ES256;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
 --- request
@@ -407,7 +401,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test7_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/keys.json keyval;
-  auth_jwt_validate_alg ES256;
+  auth_jwt_require_header alg eq ES256;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
 --- request
@@ -427,7 +421,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test7_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_validate_alg ES256;
+  auth_jwt_require_header alg eq ES256;
   auth_jwt_validate_sig off;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
@@ -448,7 +442,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test7_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_validate_alg RS256;
+  auth_jwt_require_header alg eq RS256;
   auth_jwt_validate_sig off;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
@@ -460,8 +454,7 @@ X-Jwt-Claim-Sub:
 X-Jwt-Claim-Aud:
 X-Jwt-Claim-Email:
 --- error_code: 401
---- error_log: auth_jwt: rejected due to unacceptable algorithm: equals expected=RS256 actual=ES256
---- log_level: info
+--- error_log: auth_jwt: rejected due to alg header requirement: ""ES256"" is not "eq" "RS256"
 
 === ES384 in jwks
 --- http_config
@@ -471,7 +464,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test8_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_validate_alg ES384;
+  auth_jwt_require_header alg eq ES384;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
 --- request
@@ -491,7 +484,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test8_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/keys.json keyval;
-  auth_jwt_validate_alg ES384;
+  auth_jwt_require_header alg eq ES384;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
 --- request
@@ -511,7 +504,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test8_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_validate_alg ES384;
+  auth_jwt_require_header alg eq ES384;
   auth_jwt_validate_sig off;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
@@ -532,7 +525,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test8_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_validate_alg RS384;
+  auth_jwt_require_header alg eq RS384;
   auth_jwt_validate_sig off;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
@@ -544,8 +537,7 @@ X-Jwt-Claim-Sub:
 X-Jwt-Claim-Aud:
 X-Jwt-Claim-Email:
 --- error_code: 401
---- error_log: auth_jwt: rejected due to unacceptable algorithm: equals expected=RS384 actual=ES384
---- log_level: info
+--- error_log: auth_jwt: rejected due to alg header requirement: ""ES384"" is not "eq" "RS384"
 
 === ES512 in jwks
 --- http_config
@@ -555,7 +547,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test9_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_validate_alg ES512;
+  auth_jwt_require_header alg eq ES512;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
 --- request
@@ -575,7 +567,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test9_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/keys.json keyval;
-  auth_jwt_validate_alg ES512;
+  auth_jwt_require_header alg eq ES512;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
 --- request
@@ -595,7 +587,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test9_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_validate_alg ES512;
+  auth_jwt_require_header alg eq ES512;
   auth_jwt_validate_sig off;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
@@ -616,7 +608,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test9_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_validate_alg RS512;
+  auth_jwt_require_header alg eq RS512;
   auth_jwt_validate_sig off;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
@@ -628,8 +620,7 @@ X-Jwt-Claim-Sub:
 X-Jwt-Claim-Aud:
 X-Jwt-Claim-Email:
 --- error_code: 401
---- error_log: auth_jwt: rejected due to unacceptable algorithm: equals expected=RS512 actual=ES512
---- log_level: info
+--- error_log: auth_jwt: rejected due to alg header requirement: ""ES512"" is not "eq" "RS512"
 
 === valid none
 --- http_config
@@ -639,7 +630,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test0_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_validate_alg none;
+  auth_jwt_require_header alg eq none;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
 --- request
@@ -659,7 +650,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test0_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_validate_alg HS256;
+  auth_jwt_require_header alg eq HS256;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
 --- request
@@ -670,8 +661,7 @@ X-Jwt-Claim-Sub:
 X-Jwt-Claim-Aud:
 X-Jwt-Claim-Email:
 --- error_code: 401
---- error_log: auth_jwt: rejected due to unacceptable algorithm: equals expected=HS256 actual=none
---- log_level: info
+--- error_log: auth_jwt: rejected due to alg header requirement: ""none"" is not "eq" "HS256"
 
 === default none invalid
 --- http_config
@@ -692,4 +682,3 @@ X-Jwt-Claim-Aud:
 X-Jwt-Claim-Email:
 --- error_code: 401
 --- error_log: auth_jwt: rejected due to none algorithm
---- log_level: info
