@@ -57,7 +57,6 @@ typedef struct {
     ngx_flag_t nbf;
     ngx_flag_t sig;
     ngx_flag_t sub;
-    ngx_http_complex_value_t *nonce;
     ngx_array_t *claim_requirements;
     ngx_array_t *header_requirements;
   } validate;
@@ -227,12 +226,6 @@ static ngx_command_t ngx_http_auth_jwt_commands[] = {
     ngx_conf_set_flag_slot,
     NGX_HTTP_LOC_CONF_OFFSET,
     offsetof(ngx_http_auth_jwt_loc_conf_t, validate.nbf),
-    NULL },
-  { ngx_string("auth_jwt_validate_nonce"),
-    NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
-    ngx_http_set_complex_value_slot,
-    NGX_HTTP_LOC_CONF_OFFSET,
-    offsetof(ngx_http_auth_jwt_loc_conf_t, validate.nonce),
     NULL },
   { ngx_string("auth_jwt_validate_sig"),
     NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
@@ -1110,7 +1103,6 @@ ngx_http_auth_jwt_create_loc_conf(ngx_conf_t *cf)
   conf->validate.nbf = NGX_CONF_UNSET;
   conf->validate.sig = NGX_CONF_UNSET;
   conf->validate.sub = NGX_CONF_UNSET;
-  conf->validate.nonce = NGX_CONF_UNSET_PTR;
 
   conf->enabled = NGX_CONF_UNSET;
 
@@ -1232,7 +1224,6 @@ ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
   ngx_conf_merge_value(conf->validate.nbf, prev->validate.nbf, 0);
   ngx_conf_merge_value(conf->validate.sig, prev->validate.sig, 1);
   ngx_conf_merge_value(conf->validate.sub, prev->validate.sub, 0);
-  ngx_conf_merge_ptr_value(conf->validate.nonce, prev->validate.nonce, NULL);
 
   ngx_conf_merge_value(conf->enabled, prev->enabled, 0);
   ngx_conf_merge_str_value(conf->realm, prev->realm, "");
@@ -1701,36 +1692,6 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
                     "auth_jwt: rejected due to nbf claim validate failure"
                     ": nbf=%l: after or equal to expected=%l actual=%l",
                     nbf, now, nbf - cf->leeway);
-      return NGX_ERROR;
-    }
-  }
-
-  /* validate nonce claim */
-  if (cf->validate.nonce) {
-    const char *nonce = NULL;
-    ngx_str_t expected = ngx_null_string;
-
-    ngx_http_complex_value(r, cf->validate.nonce, &expected);
-    if (!expected.data || expected.len == 0) {
-      ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                    "auth_jwt: rejected due to missing expected nonce");
-      return NGX_ERROR;
-    }
-
-    nonce = jwt_get_grant(ctx->jwt, "nonce");
-    if (!nonce) {
-      ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                    "auth_jwt: rejected due to missing claim: nonce");
-      return NGX_ERROR;
-    }
-
-    if (strlen((char *) nonce) != expected.len
-        || ngx_strncmp((char *) nonce,
-                       (char *) expected.data, expected.len) != 0) {
-      ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                    "auth_jwt: rejected due to not match"
-                    ": nonce='%s': expected='%V'",
-                    (char *) nonce, &expected);
       return NGX_ERROR;
     }
   }
