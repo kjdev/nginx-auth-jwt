@@ -54,7 +54,6 @@ typedef struct {
   struct {
     ngx_flag_t exp;
     ngx_flag_t iat;
-    ngx_flag_t iss;
     ngx_flag_t nbf;
     ngx_flag_t sig;
     ngx_flag_t sub;
@@ -222,12 +221,6 @@ static ngx_command_t ngx_http_auth_jwt_commands[] = {
     ngx_conf_set_flag_slot,
     NGX_HTTP_LOC_CONF_OFFSET,
     offsetof(ngx_http_auth_jwt_loc_conf_t, validate.iat),
-    NULL },
-  { ngx_string("auth_jwt_validate_iss"),
-    NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
-    ngx_conf_set_flag_slot,
-    NGX_HTTP_LOC_CONF_OFFSET,
-    offsetof(ngx_http_auth_jwt_loc_conf_t, validate.iss),
     NULL },
   { ngx_string("auth_jwt_validate_nbf"),
     NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
@@ -1114,7 +1107,6 @@ ngx_http_auth_jwt_create_loc_conf(ngx_conf_t *cf)
   conf->validate.header_requirements = NULL;
   conf->validate.exp = NGX_CONF_UNSET;
   conf->validate.iat = NGX_CONF_UNSET;
-  conf->validate.iss = NGX_CONF_UNSET;
   conf->validate.nbf = NGX_CONF_UNSET;
   conf->validate.sig = NGX_CONF_UNSET;
   conf->validate.sub = NGX_CONF_UNSET;
@@ -1237,7 +1229,6 @@ ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
 
   ngx_conf_merge_value(conf->validate.exp, prev->validate.exp, 1);
   ngx_conf_merge_value(conf->validate.iat, prev->validate.iat, 0);
-  ngx_conf_merge_value(conf->validate.iss, prev->validate.iss, 0);
   ngx_conf_merge_value(conf->validate.nbf, prev->validate.nbf, 0);
   ngx_conf_merge_value(conf->validate.sig, prev->validate.sig, 1);
   ngx_conf_merge_value(conf->validate.sub, prev->validate.sub, 0);
@@ -1654,13 +1645,6 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
   }
 
   algorithm = jwt_get_alg(ctx->jwt);
-
-  /* validate iss claim */
-  if (cf->validate.iss && !jwt_get_grant(ctx->jwt, "iss")) {
-    ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                  "auth_jwt: rejected due to missing claim: iss");
-    return NGX_ERROR;
-  }
 
   /* validate sub claim */
   if (cf->validate.sub && !jwt_get_grant(ctx->jwt, "sub")) {
