@@ -343,7 +343,7 @@ static void jwk_key_rsa_init(jwk_key_rsa_t *rsa)
   rsa->context = NULL;
   rsa->param = NULL;
 #else
-  rsa->context =NULL;
+  rsa->context = NULL;
 #endif
 }
 

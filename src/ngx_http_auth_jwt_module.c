@@ -918,7 +918,7 @@ ngx_http_auth_jwt_conf_set_require(ngx_conf_t *cf, ngx_array_t ** requirements)
   }
 
   if (value[1].len != 0) {
-    require->name=value[1];
+    require->name = value[1];
   }
   else {
     return "first argument should not be empty";
@@ -935,7 +935,7 @@ ngx_http_auth_jwt_conf_set_require(ngx_conf_t *cf, ngx_array_t ** requirements)
     if (invalid_operator == 1) {
       return "second argument should be one of available require operators";
     }
-    require->operator=value[2];
+    require->operator = value[2];
   }
   else {
     return "second argument should not be empty";
