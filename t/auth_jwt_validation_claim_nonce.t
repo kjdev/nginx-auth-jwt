@@ -15,7 +15,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test1_with_nonce_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_validate_nonce "r7sIvkSN75noYlK6TG4Tn1";
+  auth_jwt_require_claim nonce eq r7sIvkSN75noYlK6TG4Tn1;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
 --- request
@@ -32,11 +32,11 @@ X-Jwt-Claim-Email: test1@example.com
 include $TEST_NGINX_CONF_DIR/authorized_server.conf;
 --- config
 include $TEST_NGINX_CONF_DIR/jwt.conf;
-set $nonce "r7sIvkSN75noYlK6TG4Tn1";
+set $nonce '"r7sIvkSN75noYlK6TG4Tn1"';
 location / {
   auth_jwt "" token=$test1_with_nonce_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_validate_nonce $nonce;
+  auth_jwt_require_claim nonce eq $nonce;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
 --- request
@@ -56,7 +56,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test1_with_nonce_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_validate_nonce "r7sIvkSN75";
+  auth_jwt_require_claim nonce eq r7sIvkSN75;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
 --- request
@@ -67,8 +67,7 @@ X-Jwt-Claim-Sub:
 X-Jwt-Claim-Aud:
 X-Jwt-Claim-Email:
 --- error_code: 401
---- error_log: auth_jwt: rejected due to not match: nonce='r7sIvkSN75noYlK6TG4Tn1': expected='r7sIvkSN75'
---- log_level: info
+--- error_log: auth_jwt: rejected due to nonce claim requirement: ""r7sIvkSN75noYlK6TG4Tn1"" is not "eq" "r7sIvkSN75"
 
 === invalid value to short length
 --- http_config
@@ -78,7 +77,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test1_with_nonce_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_validate_nonce "r7sIvkSN75noYlK6TG4Tn1XGMvKk";
+  auth_jwt_require_claim nonce eq r7sIvkSN75noYlK6TG4Tn1XGMvKk;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
 --- request
@@ -89,8 +88,7 @@ X-Jwt-Claim-Sub:
 X-Jwt-Claim-Aud:
 X-Jwt-Claim-Email:
 --- error_code: 401
---- error_log: auth_jwt: rejected due to not match: nonce='r7sIvkSN75noYlK6TG4Tn1': expected='r7sIvkSN75noYlK6TG4Tn1XGMvKk'
---- log_level: info
+--- error_log: auth_jwt: rejected due to nonce claim requirement: ""r7sIvkSN75noYlK6TG4Tn1"" is not "eq" "r7sIvkSN75noYlK6TG4Tn1XGMvKk"
 
 === invalid value
 --- http_config
@@ -100,7 +98,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test1_with_nonce_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_validate_nonce "YlK6TG4Tn1r7sIvkSN75no";
+  auth_jwt_require_claim nonce eq YlK6TG4Tn1r7sIvkSN75no;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
 --- request
@@ -111,8 +109,7 @@ X-Jwt-Claim-Sub:
 X-Jwt-Claim-Aud:
 X-Jwt-Claim-Email:
 --- error_code: 401
---- error_log: auth_jwt: rejected due to not match: nonce='r7sIvkSN75noYlK6TG4Tn1': expected='YlK6TG4Tn1r7sIvkSN75no'
---- log_level: info
+--- error_log: auth_jwt: rejected due to nonce claim requirement: ""r7sIvkSN75noYlK6TG4Tn1"" is not "eq" "YlK6TG4Tn1r7sIvkSN75no"
 
 === empty value
 --- http_config
@@ -122,7 +119,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test1_with_nonce_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_validate_nonce "";
+  auth_jwt_require_claim nonce eq json="";
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
 --- request
@@ -133,8 +130,7 @@ X-Jwt-Claim-Sub:
 X-Jwt-Claim-Aud:
 X-Jwt-Claim-Email:
 --- error_code: 401
---- error_log: auth_jwt: rejected due to missing expected nonce
---- log_level: info
+--- error_log: auth_jwt: rejected due to nonce claim requirement: ""r7sIvkSN75noYlK6TG4Tn1"" is not "eq" ""
 
 === missing nonce
 --- http_config
@@ -144,7 +140,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test1_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_validate_nonce "r7sIvkSN75noYlK6TG4Tn1";
+  auth_jwt_require_claim nonce eq r7sIvkSN75noYlK6TG4Tn1;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
 --- request
@@ -156,4 +152,3 @@ X-Jwt-Claim-Aud:
 X-Jwt-Claim-Email:
 --- error_code: 401
 --- error_log: auth_jwt: rejected due to missing claim: nonce
---- log_level: info
