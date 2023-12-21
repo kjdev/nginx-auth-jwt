@@ -14,6 +14,7 @@
 static ngx_int_t ngx_http_auth_jwt_variable_claim(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data);
 static ngx_int_t ngx_http_auth_jwt_variable_header(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data);
 static ngx_int_t ngx_http_auth_jwt_variable_claims(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data);
+static ngx_int_t ngx_http_auth_jwt_variable_nowtime(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data);
 
 static char *ngx_http_auth_jwt_conf_set_token_variable(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static char *ngx_http_auth_jwt_conf_set_claim(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
@@ -140,6 +141,12 @@ static ngx_http_variable_t ngx_http_auth_jwt_vars[] = {
   { ngx_string("jwt_claims"),
     NULL,
     ngx_http_auth_jwt_variable_claims,
+    0,
+    NGX_HTTP_VAR_NOCACHEABLE,
+    0 },
+  { ngx_string("jwt_nowtime"),
+    NULL,
+    ngx_http_auth_jwt_variable_nowtime,
     0,
     NGX_HTTP_VAR_NOCACHEABLE,
     0 },
@@ -581,6 +588,29 @@ ngx_http_auth_jwt_variable_claims(ngx_http_request_t *r,
 {
   return ngx_http_auth_jwt_variable_find(r, v, (ngx_str_t *) data,
                                          NGX_HTTP_AUTH_JWT_VARIABLE_CLAIMS);
+}
+
+static ngx_int_t
+ngx_http_auth_jwt_variable_nowtime(ngx_http_request_t *r,
+                                   ngx_http_variable_value_t *v,
+                                   uintptr_t data)
+{
+  time_t now;
+
+  v->data = ngx_pnalloc(r->pool, sizeof("4294967295") - 1);
+  if (v->data == NULL) {
+    return NGX_ERROR;
+  }
+
+  now = ngx_time();
+
+  v->len = ngx_sprintf(v->data, "%ui", now) - v->data;
+
+  v->valid = 1;
+  v->no_cacheable = 0;
+  v->not_found = 0;
+
+  return NGX_OK;
 }
 
 static char *
