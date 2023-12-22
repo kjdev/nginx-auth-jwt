@@ -54,7 +54,6 @@ typedef struct {
   } key;
   struct {
     ngx_flag_t exp;
-    ngx_flag_t nbf;
     ngx_flag_t sig;
     ngx_array_t *claim_requirements;
     ngx_array_t *header_requirements;
@@ -219,12 +218,6 @@ static ngx_command_t ngx_http_auth_jwt_commands[] = {
     ngx_conf_set_flag_slot,
     NGX_HTTP_LOC_CONF_OFFSET,
     offsetof(ngx_http_auth_jwt_loc_conf_t, validate.exp),
-    NULL },
-  { ngx_string("auth_jwt_validate_nbf"),
-    NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
-    ngx_conf_set_flag_slot,
-    NGX_HTTP_LOC_CONF_OFFSET,
-    offsetof(ngx_http_auth_jwt_loc_conf_t, validate.nbf),
     NULL },
   { ngx_string("auth_jwt_validate_sig"),
     NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
@@ -1115,7 +1108,6 @@ ngx_http_auth_jwt_create_loc_conf(ngx_conf_t *cf)
   conf->validate.claim_requirements = NULL;
   conf->validate.header_requirements = NULL;
   conf->validate.exp = NGX_CONF_UNSET;
-  conf->validate.nbf = NGX_CONF_UNSET;
   conf->validate.sig = NGX_CONF_UNSET;
 
   conf->enabled = NGX_CONF_UNSET;
@@ -1234,7 +1226,6 @@ ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
   ngx_conf_merge_value(conf->phase, prev->phase, NGX_HTTP_ACCESS_PHASE);
 
   ngx_conf_merge_value(conf->validate.exp, prev->validate.exp, 1);
-  ngx_conf_merge_value(conf->validate.nbf, prev->validate.nbf, 0);
   ngx_conf_merge_value(conf->validate.sig, prev->validate.sig, 1);
 
   ngx_conf_merge_value(conf->enabled, prev->enabled, 0);
@@ -1671,26 +1662,6 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
     }
   }
 
-  /* validate nbf claim */
-  if (cf->validate.nbf) {
-    time_t nbf, now;
-
-    nbf = ngx_http_auth_jwt_get_grant_time(r, ctx->jwt, "nbf");
-    if (nbf == -1) {
-      return NGX_ERROR;
-    }
-
-    now = ngx_time();
-
-    if (now < nbf - cf->leeway) {
-      ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
-                    "auth_jwt: rejected due to nbf claim validate failure"
-                    ": nbf=%l: after or equal to expected=%l actual=%l",
-                    nbf, now, nbf - cf->leeway);
-      return NGX_ERROR;
-    }
-  }
-
   if (ctx->revocation_subs != NULL) {
     json_t *value = NULL;
     const char * revocation_sub;
@@ -1780,6 +1751,24 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
         free(jwt_claim);
         json_delete(jwt_claim_json);
         return NGX_ERROR;
+      }
+
+      if (ngx_strcmp("nbf", ctx_require[i].name) == 0) {
+        if (json_is_number(expected_json)) {
+          time_t val = ngx_atotm(ctx_require[i].value.data,
+                                 ctx_require[i].value.len);
+          json_delete(expected_json);
+          expected_json = json_integer(val + cf->leeway);
+          if (expected_json == NULL) {
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                          "auth_jwt: failed to json reload"
+                          " jwt claim requirement: %s",
+                          ctx_require[i].name);
+            free(jwt_claim);
+            json_delete(jwt_claim_json);
+            return NGX_ERROR;
+          }
+        }
       }
 
       is_valid = ngx_http_auth_jwt_validate_requirement_by_operator(
