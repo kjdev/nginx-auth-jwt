@@ -193,14 +193,6 @@ Context: http, server, location
 Determines whether to validating the exp JWT claim.
 
 ```
-Syntax: auth_jwt_validate_nbf on | off;
-Default: auth_jwt_validate_nbf off;
-Context: http, server, location
-```
-
-Determines whether to validating the nbf JWT claim.
-
-```
 Syntax: auth_jwt_validate_sig on | off;
 Default: auth_jwt_validate_sig on;
 Context: http, server, location
