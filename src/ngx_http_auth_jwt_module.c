@@ -1853,7 +1853,7 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
     ctx_require = ctx->claim_requirements->elts;
     for (i = 0; i < ctx->claim_requirements->nelts; i++) {
       char *jwt_claim = NULL;
-      json_t *jwt_claim_json_data = NULL, *expected_json = NULL;
+      json_t *jwt_claim_json = NULL, *expected_json = NULL;
       ngx_int_t is_valid;
 
       jwt_claim = jwt_get_grants_json(ctx->jwt,
@@ -1861,8 +1861,8 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
       if (jwt_claim == NULL) {
         return NGX_ERROR;
       }
-      jwt_claim_json_data = json_loads(jwt_claim, JSON_DECODE_ANY, NULL);
-      if (jwt_claim_json_data == NULL) {
+      jwt_claim_json = json_loads(jwt_claim, JSON_DECODE_ANY, NULL);
+      if (jwt_claim_json == NULL) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                       "auth_jwt: failed to json_load jwt claim");
         free(jwt_claim);
@@ -1874,12 +1874,11 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                       "auth_jwt: failed to json_load jwt claim requirement");
         free(jwt_claim);
-        json_delete(jwt_claim_json_data);
+        json_delete(jwt_claim_json);
         return NGX_ERROR;
       }
       is_valid = ngx_http_auth_jwt_validate_requirement_by_operator(
-        (char *) ctx_require[i].operator.data, jwt_claim_json_data,
-        expected_json);
+        (char *) ctx_require[i].operator.data, jwt_claim_json, expected_json);
       if (is_valid != NGX_OK) {
         ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
                       "auth_jwt: failed requirement for \"%s\""
@@ -1888,13 +1887,13 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
                       (char *) ctx_require[i].operator.data,
                       ctx_require[i].value);
         free(jwt_claim);
-        json_delete(jwt_claim_json_data);
+        json_delete(jwt_claim_json);
         json_delete(expected_json);
         return NGX_ERROR;
       }
 
       free(jwt_claim);
-      json_delete(jwt_claim_json_data);
+      json_delete(jwt_claim_json);
       json_delete(expected_json);
     }
   }
@@ -1904,7 +1903,7 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
     ngx_http_auth_jwt_ctx_require_t *ctx_require;
     ctx_require = ctx->header_requirements->elts;
     for (i = 0; i < ctx->header_requirements->nelts; i++) {
-      json_t *jwt_claim_json_data = NULL, *expected_json = NULL;
+      json_t *jwt_header_json = NULL, *expected_json = NULL;
       char *jwt_header = NULL;
       ngx_int_t is_valid;
 
@@ -1913,8 +1912,8 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
       if (jwt_header == NULL) {
         return NGX_ERROR;
       }
-      jwt_claim_json_data = json_loads(jwt_header, JSON_DECODE_ANY, NULL);
-      if (jwt_claim_json_data == NULL) {
+      jwt_header_json = json_loads(jwt_header, JSON_DECODE_ANY, NULL);
+      if (jwt_header_json == NULL) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                       "auth_jwt: failed to json_load jwt header");
         free(jwt_header);
@@ -1926,12 +1925,11 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                       "auth_jwt: failed to json_load jwt header requirement");
         free(jwt_header);
-        json_delete(jwt_claim_json_data);
+        json_delete(jwt_header_json);
         return NGX_ERROR;
       }
       is_valid = ngx_http_auth_jwt_validate_requirement_by_operator(
-        (char *) ctx_require[i].operator.data, jwt_claim_json_data,
-        expected_json);
+        (char *) ctx_require[i].operator.data, jwt_header_json, expected_json);
       if (is_valid != NGX_OK) {
         ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
                       "auth_jwt: failed requirement for \"%s\""
@@ -1940,13 +1938,13 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
                       (char *) ctx_require[i].operator.data,
                       ctx_require[i].value);
         free(jwt_header);
-        json_delete(jwt_claim_json_data);
+        json_delete(jwt_header_json);
         json_delete(expected_json);
         return NGX_ERROR;
       }
 
       free(jwt_header);
-      json_delete(jwt_claim_json_data);
+      json_delete(jwt_header_json);
       json_delete(expected_json);
     }
   }
