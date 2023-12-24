@@ -12,26 +12,11 @@ __DATA__
 include $TEST_NGINX_CONF_DIR/authorized_server.conf;
 --- config
 include $TEST_NGINX_CONF_DIR/jwt.conf;
-set $token "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyLCJyb2xlcyI6WyJhZG1pbiIsInNlcnZpY2UiXX0.48TJcIdYaNyWlFhwGIR8ZPgn2-Chy-rpk3592OVL9A0";
-#HEADER:ALGORITHM & TOKEN TYPE
-#{
-#  "alg": "HS256",
-#  "typ": "JWT"
-#}
-#PAYLOAD:DATA
-#{
-#  "sub": "1234567890",
-#  "name": "John Doe",
-#  "iat": 1516239022,
-#  "roles": ["admin", "service"]
-#}
-auth_jwt_validate_sig off; # to check only auth_jwt_require_claim we turn off default auth_jwt_validate_sig
-auth_jwt_validate_exp off; # to check only auth_jwt_require_claim we turn off default auth_jwt_validate_exp
-
+auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
 location / {
   set $expected_roles1 '["admin", "user_role1" , "user_role2"]';
   set $expected_roles2 '["admin", "service", "user_role1" , "user_role2"]';
-  auth_jwt "" token=$token;
+  auth_jwt "" token=$require_claim_jwt;
   auth_jwt_require_claim roles intersect $expected_roles1;
   auth_jwt_require_claim roles intersect $expected_roles2;
 }
@@ -44,25 +29,10 @@ location / {
 include $TEST_NGINX_CONF_DIR/authorized_server.conf;
 --- config
 include $TEST_NGINX_CONF_DIR/jwt.conf;
-set $token "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyLCJyb2xlcyI6WyJhZG1pbiIsInNlcnZpY2UiXX0.48TJcIdYaNyWlFhwGIR8ZPgn2-Chy-rpk3592OVL9A0";
-#HEADER:ALGORITHM & TOKEN TYPE
-#{
-#  "alg": "HS256",
-#  "typ": "JWT"
-#}
-#PAYLOAD:DATA
-#{
-#  "sub": "1234567890",
-#  "name": "John Doe",
-#  "iat": 1516239022,
-#  "roles": ["admin", "service"]
-#}
-auth_jwt_validate_sig off; # to check only auth_jwt_require_claim we turn off default auth_jwt_validate_sig
-auth_jwt_validate_exp off; # to check only auth_jwt_require_claim we turn off default auth_jwt_validate_exp
-
+auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
 location / {
   set $expected_roles '["user_role1" , "user_role2", "user_role3"]';
-  auth_jwt "" token=$token;
+  auth_jwt "" token=$require_claim_jwt;
   auth_jwt_require_claim roles intersect $expected_roles;
 }
 --- request
@@ -76,25 +46,10 @@ auth_jwt: failed requirement for "roles":  "["admin","service"]" is not "interse
 include $TEST_NGINX_CONF_DIR/authorized_server.conf;
 --- config
 include $TEST_NGINX_CONF_DIR/jwt.conf;
-set $token "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyLCJyb2xlcyI6WyJhZG1pbiIsInNlcnZpY2UiXX0.48TJcIdYaNyWlFhwGIR8ZPgn2-Chy-rpk3592OVL9A0";
-#HEADER:ALGORITHM & TOKEN TYPE
-#{
-#  "alg": "HS256",
-#  "typ": "JWT"
-#}
-#PAYLOAD:DATA
-#{
-#  "sub": "1234567890",
-#  "name": "John Doe",
-#  "iat": 1516239022,
-#  "roles": ["admin", "service"]
-#}
-auth_jwt_validate_sig off; # to check only auth_jwt_require_claim we turn off default auth_jwt_validate_sig
-auth_jwt_validate_exp off; # to check only auth_jwt_require_claim we turn off default auth_jwt_validate_exp
-
+auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
 location / {
   set $expected_roles '"just string"';
-  auth_jwt "" token=$token;
+  auth_jwt "" token=$require_claim_jwt;
   auth_jwt_require_claim roles intersect $expected_roles;
 }
 --- request
@@ -108,25 +63,10 @@ auth_jwt: failed requirement for "roles":  "["admin","service"]" is not "interse
 include $TEST_NGINX_CONF_DIR/authorized_server.conf;
 --- config
 include $TEST_NGINX_CONF_DIR/jwt.conf;
-set $token "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyLCJyb2xlcyI6WyJhZG1pbiIsInNlcnZpY2UiXX0.48TJcIdYaNyWlFhwGIR8ZPgn2-Chy-rpk3592OVL9A0";
-#HEADER:ALGORITHM & TOKEN TYPE
-#{
-#  "alg": "HS256",
-#  "typ": "JWT"
-#}
-#PAYLOAD:DATA
-#{
-#  "sub": "1234567890",
-#  "name": "John Doe",
-#  "iat": 1516239022,
-#  "roles": ["admin", "service"]
-#}
-auth_jwt_validate_sig off; # to check only auth_jwt_require_claim we turn off default auth_jwt_validate_sig
-auth_jwt_validate_exp off; # to check only auth_jwt_require_claim we turn off default auth_jwt_validate_exp
-
+auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
 location / {
   set $expected_roles '["user_role1" , "user_role2", "user_role3"]';
-  auth_jwt "" token=$token;
+  auth_jwt "" token=$require_claim_jwt;
   auth_jwt_require_claim name intersect $expected_roles;
 }
 --- request

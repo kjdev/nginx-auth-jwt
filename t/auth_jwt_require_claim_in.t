@@ -12,25 +12,10 @@ __DATA__
 include $TEST_NGINX_CONF_DIR/authorized_server.conf;
 --- config
 include $TEST_NGINX_CONF_DIR/jwt.conf;
-set $token "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyLCJyb2xlcyI6WyJhZG1pbiIsInNlcnZpY2UiXX0.48TJcIdYaNyWlFhwGIR8ZPgn2-Chy-rpk3592OVL9A0";
-#HEADER:ALGORITHM & TOKEN TYPE
-#{
-#  "alg": "HS256",
-#  "typ": "JWT"
-#}
-#PAYLOAD:DATA
-#{
-#  "sub": "1234567890",
-#  "name": "John Doe",
-#  "iat": 1516239022,
-#  "roles": ["admin", "service"]
-#}
-auth_jwt_validate_sig off; # to check only auth_jwt_require_claim we turn off default auth_jwt_validate_sig
-auth_jwt_validate_exp off; # to check only auth_jwt_require_claim we turn off default auth_jwt_validate_exp
-
+auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
 location / {
   set $expected_name '["John Doe", "John Doe2" , "John Doe3"]';
-  auth_jwt "" token=$token;
+  auth_jwt "" token=$require_claim_jwt;
   auth_jwt_require_claim name in $expected_name;
 }
 --- request
@@ -42,25 +27,10 @@ location / {
 include $TEST_NGINX_CONF_DIR/authorized_server.conf;
 --- config
 include $TEST_NGINX_CONF_DIR/jwt.conf;
-set $token "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyLCJyb2xlcyI6WyJhZG1pbiIsInNlcnZpY2UiXX0.48TJcIdYaNyWlFhwGIR8ZPgn2-Chy-rpk3592OVL9A0";
-#HEADER:ALGORITHM & TOKEN TYPE
-#{
-#  "alg": "HS256",
-#  "typ": "JWT"
-#}
-#PAYLOAD:DATA
-#{
-#  "sub": "1234567890",
-#  "name": "John Doe",
-#  "iat": 1516239022,
-#  "roles": ["admin", "service"]
-#}
-auth_jwt_validate_sig off; # to check only auth_jwt_require_claim we turn off default auth_jwt_validate_sig
-auth_jwt_validate_exp off; # to check only auth_jwt_require_claim we turn off default auth_jwt_validate_exp
-
+auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
 location / {
   set $expected_name '["John Doe5", "John Doe2" , "John Doe3"]';
-  auth_jwt "" token=$token;
+  auth_jwt "" token=$require_claim_jwt;
   auth_jwt_require_claim name in $expected_name;
 }
 --- request
@@ -75,25 +45,10 @@ auth_jwt: failed requirement for "name":  ""John Doe"" is not "in" "["John Doe5"
 include $TEST_NGINX_CONF_DIR/authorized_server.conf;
 --- config
 include $TEST_NGINX_CONF_DIR/jwt.conf;
-set $token "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyLCJyb2xlcyI6WyJhZG1pbiIsInNlcnZpY2UiXX0.48TJcIdYaNyWlFhwGIR8ZPgn2-Chy-rpk3592OVL9A0";
-#HEADER:ALGORITHM & TOKEN TYPE
-#{
-#  "alg": "HS256",
-#  "typ": "JWT"
-#}
-#PAYLOAD:DATA
-#{
-#  "sub": "1234567890",
-#  "name": "John Doe",
-#  "iat": 1516239022,
-#  "roles": ["admin", "service"]
-#}
-auth_jwt_validate_sig off; # to check only auth_jwt_require_claim we turn off default auth_jwt_validate_sig
-auth_jwt_validate_exp off; # to check only auth_jwt_require_claim we turn off default auth_jwt_validate_exp
-
+auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
 location / {
   set $expected_name '"just string"';
-  auth_jwt "" token=$token;
+  auth_jwt "" token=$require_claim_jwt;
   auth_jwt_require_claim name in $expected_name;
 }
 --- request
