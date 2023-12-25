@@ -1640,28 +1640,6 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
 
   algorithm = jwt_get_alg(ctx->jwt);
 
-  /* validate exp claim */
-  if (cf->validate.exp) {
-    time_t exp, now;
-
-    exp = ngx_http_auth_jwt_get_grant_time(r, ctx->jwt, "exp");
-    if (exp == -1) {
-      return NGX_ERROR;
-    }
-
-    now = ngx_time();
-
-    if (now >= exp + cf->leeway) {
-      ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
-                    "auth_jwt: rejected due to token expired"
-                    ": exp=%l: greater than expected=%l actual=%l",
-                    exp, now, exp + cf->leeway);
-      ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                    "auth_jwt: token: \"%s\"", (char *) ctx->token);
-      return NGX_ERROR;
-    }
-  }
-
   if (ctx->revocation_subs != NULL) {
     json_t *value = NULL;
     const char * revocation_sub;
@@ -1770,6 +1748,26 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
           }
         }
       }
+      else if (ngx_strcmp("exp", ctx_require[i].name) == 0) {
+        if (json_is_number(expected_json)) {
+          time_t val = ngx_atotm(ctx_require[i].value.data,
+                                 ctx_require[i].value.len);
+          json_delete(expected_json);
+          expected_json = json_integer(val - cf->leeway);
+          if (expected_json == NULL) {
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                          "auth_jwt: failed to json reload"
+                          " jwt claim requirement: %s",
+                          ctx_require[i].name);
+            free(jwt_claim);
+            json_delete(jwt_claim_json);
+            return NGX_ERROR;
+          }
+
+          // NOTE: do not verify exp if exp requirements are met
+          cf->validate.exp = 0;
+        }
+      }
 
       is_valid = ngx_http_auth_jwt_validate_requirement_by_operator(
         ctx_require[i].operator, jwt_claim_json, expected_json);
@@ -1788,6 +1786,28 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
       free(jwt_claim);
       json_delete(jwt_claim_json);
       json_delete(expected_json);
+    }
+  }
+
+  /* validate exp claim */
+  if (cf->validate.exp) {
+    time_t exp, now;
+
+    exp = ngx_http_auth_jwt_get_grant_time(r, ctx->jwt, "exp");
+    if (exp == -1) {
+      return NGX_ERROR;
+    }
+
+    now = ngx_time();
+
+    if (now >= exp + cf->leeway) {
+      ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
+                    "auth_jwt: rejected due to token expired"
+                    ": exp=%l: greater than expected=%l actual=%l",
+                    exp, now, exp + cf->leeway);
+      ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                    "auth_jwt: token: \"%s\"", (char *) ctx->token);
+      return NGX_ERROR;
     }
   }
 
