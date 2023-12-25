@@ -87,15 +87,16 @@ typedef struct {
 } ngx_http_auth_jwt_ctx_t;
 
 typedef struct  {
-  u_char *value;
-  ngx_str_t name;
-  ngx_str_t operator;
+  ngx_flag_t json;
+  ngx_str_t value;
+  char *name;
+  char *operator;
 } ngx_http_auth_jwt_ctx_require_t;
 
 typedef struct {
-  ngx_int_t value;
-  ngx_str_t name;
-  ngx_str_t operator;
+  ngx_http_complex_value_t *value;
+  char *name;
+  char *operator;
 } ngx_http_auth_jwt_require_t;
 
 
@@ -894,7 +895,41 @@ ngx_http_auth_jwt_conf_set_key_file(ngx_conf_t *cf,
 }
 
 static char *
-ngx_http_auth_jwt_conf_set_require(ngx_conf_t *cf, ngx_array_t ** requirements)
+ngx_http_auth_jwt_set_complex_value_slot(ngx_conf_t *cf,
+                                         ngx_command_t *cmd, void *conf,
+                                         ngx_str_t *value)
+{
+  ngx_http_compile_complex_value_t ccv;
+  ngx_http_complex_value_t **cv;
+  char *p = conf;
+
+  cv = (ngx_http_complex_value_t **) (p + cmd->offset);
+
+  if (*cv != NGX_CONF_UNSET_PTR && *cv != NULL) {
+    return NGX_CONF_ERROR;
+ }
+
+  *cv = ngx_palloc(cf->pool, sizeof(ngx_http_complex_value_t));
+  if (*cv == NULL) {
+    return NGX_CONF_ERROR;
+  }
+
+  ngx_memzero(&ccv, sizeof(ngx_http_compile_complex_value_t));
+
+  ccv.cf = cf;
+  ccv.value = value;
+  ccv.complex_value = *cv;
+
+  if (ngx_http_compile_complex_value(&ccv) != NGX_OK) {
+    return NGX_CONF_ERROR;
+  }
+
+  return NGX_CONF_OK;
+}
+
+static char *
+ngx_http_auth_jwt_conf_set_require(ngx_conf_t *cf, ngx_command_t *cmd,
+                                   ngx_array_t ** requirements)
 {
   ngx_str_t *value;
   ngx_http_auth_jwt_require_t *require;
@@ -918,7 +953,9 @@ ngx_http_auth_jwt_conf_set_require(ngx_conf_t *cf, ngx_array_t ** requirements)
   }
 
   if (value[1].len != 0) {
-    require->name = value[1];
+    require->name = (char *) ngx_http_auth_jwt_strdup(cf->pool,
+                                                      value[1].data,
+                                                      value[1].len);
   }
   else {
     return "first argument should not be empty";
@@ -935,18 +972,17 @@ ngx_http_auth_jwt_conf_set_require(ngx_conf_t *cf, ngx_array_t ** requirements)
     if (invalid_operator == 1) {
       return "second argument should be one of available require operators";
     }
-    require->operator = value[2];
+    require->operator = (char *) ngx_http_auth_jwt_strdup(cf->pool,
+                                                          value[2].data,
+                                                          value[2].len);
   }
   else {
     return "second argument should not be empty";
   }
 
-  if (value[3].len != 0 && value[3].data[0] == '$') {
-    value[3].data++;
-    value[3].len--;
-
-    require->value = ngx_http_get_variable_index(cf, &value[3]);
-    if (require->value == NGX_ERROR) {
+  if (value[3].len != 0) {
+    if (ngx_http_auth_jwt_set_complex_value_slot(cf, cmd, &require->value,
+                                                 &value[3]) != NGX_CONF_OK) {
       return "no value variables";
     }
   }
@@ -965,7 +1001,7 @@ ngx_http_auth_jwt_conf_set_require_claim(ngx_conf_t *cf,
 
   lcf = conf;
   char *x
-    = ngx_http_auth_jwt_conf_set_require(cf,
+    = ngx_http_auth_jwt_conf_set_require(cf, cmd,
                                          &(lcf->validate.claim_requirements));
 
   return x;
@@ -978,7 +1014,7 @@ ngx_http_auth_jwt_conf_set_require_header(ngx_conf_t *cf,
   ngx_http_auth_jwt_loc_conf_t *lcf;
 
   lcf = conf;
-  return ngx_http_auth_jwt_conf_set_require(cf,
+  return ngx_http_auth_jwt_conf_set_require(cf, cmd,
                                             &lcf->validate.header_requirements);
 }
 
@@ -1550,10 +1586,10 @@ ngx_http_auth_jwt_load_requirements(ngx_http_request_t *r,
     require = (*requirements)->elts;
 
     for (i = 0; i < (*requirements)->nelts; i++) {
-      ngx_http_variable_value_t *v;
+      ngx_str_t value = ngx_null_string;
 
-      v = ngx_http_get_indexed_variable(r, require[i].value);
-      if (v == NULL || v->not_found) {
+      if (ngx_http_complex_value(r, require[i].value, &value) != NGX_OK
+          || !value.data || value.len == 0) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                       "auth_jwt: require variable specified was not provided");
         return NGX_ERROR;
@@ -1574,8 +1610,23 @@ ngx_http_auth_jwt_load_requirements(ngx_http_request_t *r,
         return NGX_ERROR;
       }
 
-      ctx_require->value = ngx_http_auth_jwt_strdup(r->pool, v->data, v->len);
-      ctx_require->operator= require[i].operator;
+      if (require[i].value->value.len != 0
+          && require[i].value->value.data[0] == '$') {
+        ctx_require->json = 1;
+        ctx_require->value.data = value.data;
+        ctx_require->value.len = value.len;
+      }
+      else if (value.len > 5 && ngx_strncmp(value.data, "json=", 5) == 0) {
+        ctx_require->json = 1;
+        ctx_require->value.data = value.data + 5;
+        ctx_require->value.len = value.len - 5;
+      }
+      else {
+        ctx_require->json = 0;
+        ctx_require->value.data = value.data;
+        ctx_require->value.len = value.len;
+      }
+      ctx_require->operator = require[i].operator;
       ctx_require->name = require[i].name;
     }
   }
@@ -1856,40 +1907,48 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
       json_t *jwt_claim_json = NULL, *expected_json = NULL;
       ngx_int_t is_valid;
 
-      jwt_claim = jwt_get_grants_json(ctx->jwt,
-                                      (char *) ctx_require[i].name.data);
+      jwt_claim = jwt_get_grants_json(ctx->jwt, ctx_require[i].name);
       if (jwt_claim == NULL) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                      "auth_jwt: rejected due to missing claim: %V",
-                      &ctx_require[i].name);
+                      "auth_jwt: rejected due to missing claim: %s",
+                      ctx_require[i].name);
         return NGX_ERROR;
       }
       jwt_claim_json = json_loads(jwt_claim, JSON_DECODE_ANY, NULL);
       if (jwt_claim_json == NULL) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                      "auth_jwt: failed to json load jwt claim: %V",
-                      &ctx_require[i].name);
+                      "auth_jwt: failed to json load jwt claim: %s",
+                      ctx_require[i].name);
         free(jwt_claim);
         return NGX_ERROR;
       }
-      expected_json = json_loads((char *)(ctx_require[i].value),
-                                 JSON_DECODE_ANY, NULL);
+
+      if (!ctx_require->json) {
+        expected_json = json_stringn((char *) ctx_require[i].value.data,
+                                     ctx_require[i].value.len);
+      }
+      else {
+        expected_json = json_loadb((char *) ctx_require[i].value.data,
+                                   ctx_require[i].value.len,
+                                   JSON_DECODE_ANY, NULL);
+      }
       if (expected_json == NULL) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                      "auth_jwt: failed to json load claim requirement: %V",
-                      &ctx_require[i].name);
+                      "auth_jwt: failed to json load claim requirement: %s",
+                      ctx_require[i].name);
         free(jwt_claim);
         json_delete(jwt_claim_json);
         return NGX_ERROR;
       }
+
       is_valid = ngx_http_auth_jwt_validate_requirement_by_operator(
-        (char *) ctx_require[i].operator.data, jwt_claim_json, expected_json);
+        ctx_require[i].operator, jwt_claim_json, expected_json);
       if (is_valid != NGX_OK) {
         ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
-                      "auth_jwt: rejected due to %V claim requirement"
-                      ": \"%s\" is not \"%V\" \"%s\"",
-                      &ctx_require[i].name, jwt_claim,
-                      &ctx_require[i].operator, ctx_require[i].value);
+                      "auth_jwt: rejected due to %s claim requirement"
+                      ": \"%s\" is not \"%s\" \"%V\"",
+                      ctx_require[i].name, jwt_claim,
+                      ctx_require[i].operator, &ctx_require[i].value);
         free(jwt_claim);
         json_delete(jwt_claim_json);
         json_delete(expected_json);
@@ -1911,40 +1970,48 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
       char *jwt_header = NULL;
       ngx_int_t is_valid;
 
-      jwt_header = jwt_get_headers_json(ctx->jwt,
-                                        (char *) ctx_require[i].name.data);
+      jwt_header = jwt_get_headers_json(ctx->jwt, ctx_require[i].name);
       if (jwt_header == NULL) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                      "auth_jwt: rejected due to missing header: %V",
-                      &ctx_require[i].name);
+                      "auth_jwt: rejected due to missing header: %s",
+                      ctx_require[i].name);
         return NGX_ERROR;
       }
       jwt_header_json = json_loads(jwt_header, JSON_DECODE_ANY, NULL);
       if (jwt_header_json == NULL) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                      "auth_jwt: failed to json load jwt header: %V",
-                      &ctx_require[i].name);
+                      "auth_jwt: failed to json load jwt header: %s",
+                      ctx_require[i].name);
         free(jwt_header);
         return NGX_ERROR;
       }
-      expected_json = json_loads((char *) (ctx_require[i].value),
-                                 JSON_DECODE_ANY, NULL);
+
+      if (!ctx_require->json) {
+        expected_json = json_stringn((char *) ctx_require[i].value.data,
+                                     ctx_require[i].value.len);
+      }
+      else {
+        expected_json = json_loadb((char *) ctx_require[i].value.data,
+                                   ctx_require[i].value.len,
+                                   JSON_DECODE_ANY, NULL);
+      }
       if (expected_json == NULL) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                      "auth_jwt: failed to json load header requirement: %V",
-                      &ctx_require[i].name);
+                      "auth_jwt: failed to json load header requirement: %s",
+                      ctx_require[i].name);
         free(jwt_header);
         json_delete(jwt_header_json);
         return NGX_ERROR;
       }
+
       is_valid = ngx_http_auth_jwt_validate_requirement_by_operator(
-        (char *) ctx_require[i].operator.data, jwt_header_json, expected_json);
+        ctx_require[i].operator, jwt_header_json, expected_json);
       if (is_valid != NGX_OK) {
         ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
-                      "auth_jwt: rejected due to %V header requirement"
-                      ": \"%s\" is not \"%V\" \"%s\"",
-                      &ctx_require[i].name, jwt_header,
-                      &ctx_require[i].operator, ctx_require[i].value);
+                      "auth_jwt: rejected due to %s header requirement"
+                      ": \"%s\" is not \"%s\" \"%V\"",
+                      ctx_require[i].name, jwt_header,
+                      ctx_require[i].operator, &ctx_require[i].value);
         free(jwt_header);
         json_delete(jwt_header_json);
         json_delete(expected_json);
