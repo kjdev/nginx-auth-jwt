@@ -398,6 +398,12 @@ $jwt_claims
 
 Returns the value of [JWT claim][] (JSON).
 
+```
+$jwt_nowtime
+```
+
+Returns the value of now timestamp.
+
 Example
 -------
 
