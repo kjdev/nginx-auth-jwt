@@ -192,6 +192,8 @@ Context: http, server, location
 
 Determines whether to validating the exp JWT claim.
 
+> Do not process if verified by `auth_jwt_require_claim` directive
+
 ```
 Syntax: auth_jwt_validate_sig on | off;
 Default: auth_jwt_validate_sig on;
