@@ -343,7 +343,7 @@ but if you are using auth_jwt_revocation_list_kid directive - it means,
 that kid will grow to **REQUIRED**
 
 ```
-Syntax: auth_jwt_require_claim claim_name operator $variable;
+Syntax: auth_jwt_require_claim claim_name operator $variable | json=string | string;
 Default: -
 Context: http, server, location
 ```
@@ -359,12 +359,10 @@ Specifies a requirement for claim in jwt token.
 >   server {
 >     ...
 >     location = /verify {
->       set $expected_jti '"3949117906"';
->       set $expected_iat 1697461112;
 >       set $expected_less_than_iat 1697461110;
 >
->       auth_jwt_require_claim jti eq $expected_jti;
->       auth_jwt_require_claim iat eq $expected_iat;
+>       auth_jwt_require_claim jti eq 3949117906; # string
+>       auth_jwt_require_claim iat eq json=1697461112; # integer
 >       auth_jwt_require iat lt $expected_less_than_iat;
 >       auth_jwt_require_claim roles intersect $required_jwt_roles;
 >     }
