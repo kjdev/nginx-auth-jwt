@@ -1859,12 +1859,16 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
       jwt_claim = jwt_get_grants_json(ctx->jwt,
                                       (char *) ctx_require[i].name.data);
       if (jwt_claim == NULL) {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                      "auth_jwt: rejected due to missing claim: %V",
+                      &ctx_require[i].name);
         return NGX_ERROR;
       }
       jwt_claim_json = json_loads(jwt_claim, JSON_DECODE_ANY, NULL);
       if (jwt_claim_json == NULL) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                      "auth_jwt: failed to json_load jwt claim");
+                      "auth_jwt: failed to json load jwt claim: %V",
+                      &ctx_require[i].name);
         free(jwt_claim);
         return NGX_ERROR;
       }
@@ -1872,7 +1876,8 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
                                  JSON_DECODE_ANY, NULL);
       if (expected_json == NULL) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                      "auth_jwt: failed to json_load jwt claim requirement");
+                      "auth_jwt: failed to json load claim requirement: %V",
+                      &ctx_require[i].name);
         free(jwt_claim);
         json_delete(jwt_claim_json);
         return NGX_ERROR;
@@ -1880,12 +1885,11 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
       is_valid = ngx_http_auth_jwt_validate_requirement_by_operator(
         (char *) ctx_require[i].operator.data, jwt_claim_json, expected_json);
       if (is_valid != NGX_OK) {
-        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
-                      "auth_jwt: failed requirement for \"%s\""
-                      ":  \"%s\" is not \"%s\" \"%s\"",
-                      (char *) ctx_require[i].name.data, jwt_claim,
-                      (char *) ctx_require[i].operator.data,
-                      ctx_require[i].value);
+        ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
+                      "auth_jwt: rejected due to %V claim requirement"
+                      ": \"%s\" is not \"%V\" \"%s\"",
+                      &ctx_require[i].name, jwt_claim,
+                      &ctx_require[i].operator, ctx_require[i].value);
         free(jwt_claim);
         json_delete(jwt_claim_json);
         json_delete(expected_json);
@@ -1910,12 +1914,16 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
       jwt_header = jwt_get_headers_json(ctx->jwt,
                                         (char *) ctx_require[i].name.data);
       if (jwt_header == NULL) {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                      "auth_jwt: rejected due to missing header: %V",
+                      &ctx_require[i].name);
         return NGX_ERROR;
       }
       jwt_header_json = json_loads(jwt_header, JSON_DECODE_ANY, NULL);
       if (jwt_header_json == NULL) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                      "auth_jwt: failed to json_load jwt header");
+                      "auth_jwt: failed to json load jwt header: %V",
+                      &ctx_require[i].name);
         free(jwt_header);
         return NGX_ERROR;
       }
@@ -1923,7 +1931,8 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
                                  JSON_DECODE_ANY, NULL);
       if (expected_json == NULL) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                      "auth_jwt: failed to json_load jwt header requirement");
+                      "auth_jwt: failed to json load header requirement: %V",
+                      &ctx_require[i].name);
         free(jwt_header);
         json_delete(jwt_header_json);
         return NGX_ERROR;
@@ -1931,12 +1940,11 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
       is_valid = ngx_http_auth_jwt_validate_requirement_by_operator(
         (char *) ctx_require[i].operator.data, jwt_header_json, expected_json);
       if (is_valid != NGX_OK) {
-        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
-                      "auth_jwt: failed requirement for \"%s\""
-                      ":  \"%s\" is not \"%s\" \"%s\"",
-                      (char *) ctx_require[i].name.data, jwt_header,
-                      (char *) ctx_require[i].operator.data,
-                      ctx_require[i].value);
+        ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
+                      "auth_jwt: rejected due to %V header requirement"
+                      ": \"%s\" is not \"%V\" \"%s\"",
+                      &ctx_require[i].name, jwt_header,
+                      &ctx_require[i].operator, ctx_require[i].value);
         free(jwt_header);
         json_delete(jwt_header_json);
         json_delete(expected_json);
