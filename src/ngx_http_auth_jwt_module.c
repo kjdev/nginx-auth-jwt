@@ -1742,7 +1742,9 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
       return NGX_ERROR;
     }
 
-    valid = ngx_strstr(aud, (char *) expected.data);
+    valid = ngx_strstr(aud,
+                       ngx_http_auth_jwt_strdup(r->pool,
+                                                expected.data, expected.len));
     if (valid) {
       size_t aud_len = strlen(aud);
       size_t n = valid - aud;
