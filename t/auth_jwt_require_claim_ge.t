@@ -37,7 +37,7 @@ location / {
     GET /
 --- error_code: 401
 --- error_log
-auth_jwt: failed requirement for "iat":  "1516239022" is not "ge" ""1""
+auth_jwt: rejected due to iat claim requirement: "1516239022" is not "ge" ""1""
 
 === test: operator ge returns 401 with not ge number
 --- http_config
@@ -54,7 +54,7 @@ location / {
     GET /
 --- error_code: 401
 --- error_log
-auth_jwt: failed requirement for "iat":  "1516239022" is not "ge" "9516239022"
+auth_jwt: rejected due to iat claim requirement: "1516239022" is not "ge" "9516239022"
 
 === test: operator ge returns 200 with equal number
 --- http_config

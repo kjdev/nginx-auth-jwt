@@ -39,7 +39,7 @@ location / {
     GET /
 --- error_code: 401
 --- error_log
-auth_jwt: failed requirement for "roles":  "["admin","service"]" is not "nintersect" "["admin", "user_role1" , "user_role2"]"
+auth_jwt: rejected due to roles claim requirement: "["admin","service"]" is not "nintersect" "["admin", "user_role1" , "user_role2"]"
 
 === test: operator nintersect returns 401 with not array expected value
 --- http_config
@@ -56,7 +56,7 @@ location / {
     GET /
 --- error_code: 401
 --- error_log
-auth_jwt: failed requirement for "roles":  "["admin","service"]" is not "nintersect" ""just string""
+auth_jwt: rejected due to roles claim requirement: "["admin","service"]" is not "nintersect" ""just string""
 
 === test: operator nintersect returns 401 with not array jwt claim value
 --- http_config
@@ -73,4 +73,4 @@ location / {
     GET /
 --- error_code: 401
 --- error_log
-auth_jwt: failed requirement for "name":  ""John Doe"" is not "nintersect" "["user_role1" , "user_role2", "user_role3"]"
+auth_jwt: rejected due to name claim requirement: ""John Doe"" is not "nintersect" "["user_role1" , "user_role2", "user_role3"]"

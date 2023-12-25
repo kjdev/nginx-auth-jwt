@@ -44,7 +44,7 @@ location / {
     GET /
 --- error_code: 401
 --- error_log
-auth_jwt: failed requirement for "name":  ""John Doe"" is not "ne" ""John Doe""
+auth_jwt: rejected due to name claim requirement: ""John Doe"" is not "ne" ""John Doe""
 
 === test: operator not-equal returns 401 with not not-equal number
 --- http_config
@@ -61,7 +61,7 @@ location / {
     GET /
 --- error_code: 401
 --- error_log
-auth_jwt: failed requirement for "iat":  "1516239022" is not "ne" "1516239022"
+auth_jwt: rejected due to iat claim requirement: "1516239022" is not "ne" "1516239022"
 
 === test: operator not-equal returns 401 with not not-equal json array
 --- http_config
@@ -78,4 +78,4 @@ location / {
     GET /
 --- error_code: 401
 --- error_log
-auth_jwt: failed requirement for "roles":  "["admin","service"]" is not "ne" "["admin", "service"]"
+auth_jwt: rejected due to roles claim requirement: "["admin","service"]" is not "ne" "["admin", "service"]"

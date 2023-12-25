@@ -56,6 +56,6 @@ location / {
     GET /
 --- error_code: 401
 --- error_log
-auth_jwt: failed to json_load jwt claim requirement
+auth_jwt: failed to json load claim requirement: exp
 --- log_level
 error

@@ -44,7 +44,7 @@ location / {
     GET /
 --- error_code: 401
 --- error_log
-auth_jwt: failed requirement for "name":  ""John Doe"" is not "eq" ""Not John Doe""
+auth_jwt: rejected due to name claim requirement: ""John Doe"" is not "eq" ""Not John Doe""
 
 === test: operator equal returns 401 with incorrect number
 --- http_config
@@ -61,7 +61,7 @@ location / {
     GET /
 --- error_code: 401
 --- error_log
-auth_jwt: failed requirement for "iat":  "1516239022" is not "eq" "111"
+auth_jwt: rejected due to iat claim requirement: "1516239022" is not "eq" "111"
 
 === test: operator equal returns 401 with incorrect json array
 --- http_config
@@ -78,4 +78,4 @@ location / {
     GET /
 --- error_code: 401
 --- error_log
-auth_jwt: failed requirement for "roles":  "["admin","service"]" is not "eq" "["user"]"
+auth_jwt: rejected due to roles claim requirement: "["admin","service"]" is not "eq" "["user"]"

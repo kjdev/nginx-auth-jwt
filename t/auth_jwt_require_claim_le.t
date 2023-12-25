@@ -37,7 +37,7 @@ location / {
     GET /
 --- error_code: 401
 --- error_log
-auth_jwt: failed requirement for "iat":  "1516239022" is not "le" ""1""
+auth_jwt: rejected due to iat claim requirement: "1516239022" is not "le" ""1""
 
 === test: operator le returns 401 with not le number
 --- http_config
@@ -54,7 +54,7 @@ location / {
     GET /
 --- error_code: 401
 --- error_log
-auth_jwt: failed requirement for "iat":  "1516239022" is not "le" "1"
+auth_jwt: rejected due to iat claim requirement: "1516239022" is not "le" "1"
 
 === test: operator le returns 200 with equal number
 --- http_config

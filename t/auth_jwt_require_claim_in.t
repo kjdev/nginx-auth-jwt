@@ -37,7 +37,7 @@ location / {
     GET /
 --- error_code: 401
 --- error_log
-auth_jwt: failed requirement for "name":  ""John Doe"" is not "in" "["John Doe5", "John Doe2" , "John Doe3"]"
+auth_jwt: rejected due to name claim requirement: ""John Doe"" is not "in" "["John Doe5", "John Doe2" , "John Doe3"]"
 
 
 === test: operator in returns 401 with not array expected value
@@ -55,4 +55,4 @@ location / {
     GET /
 --- error_code: 401
 --- error_log
-auth_jwt: failed requirement for "name":  ""John Doe"" is not "in" ""just string""
+auth_jwt: rejected due to name claim requirement: ""John Doe"" is not "in" ""just string""

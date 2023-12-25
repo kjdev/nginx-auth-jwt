@@ -37,7 +37,7 @@ location / {
     GET /
 --- error_code: 401
 --- error_log
-auth_jwt: failed requirement for "iat":  "1516239022" is not "gt" ""1""
+auth_jwt: rejected due to iat claim requirement: "1516239022" is not "gt" ""1""
 
 === test: operator gt returns 401 with not gt number
 --- http_config
@@ -54,7 +54,7 @@ location / {
     GET /
 --- error_code: 401
 --- error_log
-auth_jwt: failed requirement for "iat":  "1516239022" is not "gt" "9516239022"
+auth_jwt: rejected due to iat claim requirement: "1516239022" is not "gt" "9516239022"
 
 === test: operator gt returns 401 with equal number
 --- http_config
@@ -71,4 +71,4 @@ location / {
     GET /
 --- error_code: 401
 --- error_log
-auth_jwt: failed requirement for "iat":  "1516239022" is not "gt" "1516239022"
+auth_jwt: rejected due to iat claim requirement: "1516239022" is not "gt" "1516239022"

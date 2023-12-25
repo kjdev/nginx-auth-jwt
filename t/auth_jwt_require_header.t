@@ -61,7 +61,7 @@ location / {
     GET /
 --- error_code: 401
 --- error_log
-auth_jwt: failed requirement for "kid":  ""test1"" is not "eq" ""test2""
+auth_jwt: rejected due to kid header requirement: ""test1"" is not "eq" ""test2""
 
 === test: check 401 with invalid operators
 --- http_config
@@ -91,6 +91,6 @@ location / {
     GET /
 --- error_code: 401
 --- error_log
-auth_jwt: failed to json_load jwt header requirement
+auth_jwt: failed to json load header requirement: kid
 --- log_level
 error
