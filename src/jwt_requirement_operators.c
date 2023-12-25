@@ -95,19 +95,26 @@ jwt_requirement_intersection(json_t *input, json_t *requirement)
   json_t *input_val = NULL, *requirement_val = NULL;
   size_t input_index, requirement_index;
 
-  if (!json_is_array(input) || !json_is_array(requirement)) {
+  if (!json_is_array(requirement)) {
     return NGX_ERROR;
   }
 
-  json_array_foreach(input, input_index, input_val) {
-    if (invalid == 0) {
-      break;
+  if (json_is_array(input)) {
+    json_array_foreach(input, input_index, input_val) {
+      if (invalid == 0) {
+        break;
+      }
+      json_array_foreach(requirement, requirement_index, requirement_val) {
+        if (json_equal(input_val, requirement_val) == 1) {
+          invalid = 0;
+          break;
+        }
+      }
     }
-    if (!json_is_string(input_val)) {
-      continue;
-    }
+  }
+  else {
     json_array_foreach(requirement, requirement_index, requirement_val) {
-      if (json_equal(input_val, requirement_val) == 1) {
+      if (json_equal(input, requirement_val) == 1) {
         invalid = 0;
         break;
       }
@@ -124,19 +131,26 @@ jwt_requirement_not_intersection(json_t *input, json_t *requirement)
   json_t *input_val = NULL, *requirement_val = NULL;
   size_t input_index, requirement_index;
 
-  if (!json_is_array(input) || !json_is_array(requirement)) {
+  if (!json_is_array(requirement)) {
     return NGX_ERROR;
   }
 
-  json_array_foreach(input, input_index, input_val) {
-    if (invalid == 1) {
-      break;
+  if (json_is_array(input)) {
+    json_array_foreach(input, input_index, input_val) {
+      if (invalid == 1) {
+        break;
+      }
+      json_array_foreach(requirement, requirement_index, requirement_val) {
+        if (json_equal(input_val, requirement_val) == 1) {
+          invalid = 1;
+          break;
+        }
+      }
     }
-    if (!json_is_string(input_val)) {
-      continue;
-    }
+  }
+  else {
     json_array_foreach(requirement, requirement_index, requirement_val) {
-      if (json_equal(input_val, requirement_val) == 1) {
+      if (json_equal(input, requirement_val) == 1) {
         invalid = 1;
         break;
       }
