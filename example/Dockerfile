@@ -1,5 +1,5 @@
 
-ARG ALPINE_VERSION=3.18
+ARG ALPINE_VERSION=3.19
 
 FROM ghcr.io/kjdev/nginx-auth-jwt as auth-jwt
 FROM ghcr.io/kjdev/nginx-keyval as keyval
