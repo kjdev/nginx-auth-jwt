@@ -38,7 +38,7 @@ Configuring
 
 ``` diff
          auth_jwt_key_request /_jwks_uri; # Enable when using URL
-+        auth_jwt_validate_alg RS256;
++        auth_jwt_require_header alg eq RS256;
 ```
 
 #### Changed setting for ID token verification
