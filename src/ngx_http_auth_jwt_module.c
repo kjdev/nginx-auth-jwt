@@ -40,7 +40,7 @@ static ngx_int_t ngx_http_auth_jwt_handler(ngx_http_request_t *r, ngx_int_t phas
 
 typedef struct {
   ngx_int_t token_variable;
-  ngx_array_t *claim_vars;
+  ngx_array_t *set_vars;
   time_t leeway;
   ngx_int_t phase;
   ngx_flag_t enabled;
@@ -655,13 +655,15 @@ ngx_http_auth_jwt_conf_set_token_variable(ngx_conf_t *cf,
 }
 
 static char *
-ngx_http_auth_jwt_conf_set_claim(ngx_conf_t *cf,
-                                 ngx_command_t *cmd, void *conf)
+ngx_http_auth_jwt_conf_set_valiable(ngx_conf_t *cf,
+                                    ngx_command_t *cmd, void *conf,
+                                    const char *prefix,
+                                    ngx_http_get_variable_pt get_handler)
 {
   ngx_http_auth_jwt_loc_conf_t *lcf;
   ngx_str_t *str, *value;
   ngx_http_variable_t *var;
-  size_t prefix;
+  size_t prefix_len = strlen(prefix);
 
   lcf = conf;
   value = cf->args->elts;
@@ -673,37 +675,46 @@ ngx_http_auth_jwt_conf_set_claim(ngx_conf_t *cf,
   value[1].data++;
   value[1].len--;
 
-  if (lcf->claim_vars == NGX_CONF_UNSET_PTR) {
-    lcf->claim_vars = ngx_array_create(cf->pool, 4, sizeof(ngx_str_t));
-    if (lcf->claim_vars == NULL) {
+  if (lcf->set_vars == NGX_CONF_UNSET_PTR) {
+    lcf->set_vars = ngx_array_create(cf->pool, 4, sizeof(ngx_str_t));
+    if (lcf->set_vars == NULL) {
       return "failed to allocate";
     }
   }
 
-  str = ngx_array_push(lcf->claim_vars);
+  str = ngx_array_push(lcf->set_vars);
   if (str == NULL) {
     return "failed to allocate iteam";
   }
 
-  prefix = sizeof(NGX_HTTP_AUTH_JWT_CLAIM_VAR_PREFIX);
-  str->len = value[2].len + prefix - 1;
+  str->len = value[2].len + prefix_len;
   str->data = ngx_pnalloc(cf->pool, str->len);
   if (str->data == NULL) {
     return "failed to allocate variable";
   }
 
-  ngx_memcpy(str->data, NGX_HTTP_AUTH_JWT_CLAIM_VAR_PREFIX, prefix);
-  ngx_memcpy(str->data + prefix - 1, value[2].data, value[2].len);
+  ngx_memcpy(str->data, prefix, prefix_len);
+  ngx_memcpy(str->data + prefix_len, value[2].data, value[2].len);
 
   var = ngx_http_add_variable(cf, &value[1], NGX_HTTP_VAR_CHANGEABLE);
   if (var == NULL) {
     return "failed to add variable";
   }
 
-  var->get_handler = ngx_http_auth_jwt_variable_claim;
+  var->get_handler = get_handler;
   var->data = (uintptr_t) str;
 
   return NGX_CONF_OK;
+}
+
+static char *
+ngx_http_auth_jwt_conf_set_claim(ngx_conf_t *cf,
+                                 ngx_command_t *cmd, void *conf)
+{
+  return
+    ngx_http_auth_jwt_conf_set_valiable(cf, cmd, conf,
+                                        NGX_HTTP_AUTH_JWT_CLAIM_VAR_PREFIX,
+                                        ngx_http_auth_jwt_variable_claim);
 }
 
 static char *
@@ -1076,7 +1087,7 @@ ngx_http_auth_jwt_create_loc_conf(ngx_conf_t *cf)
   }
 
   conf->token_variable = NGX_CONF_UNSET;
-  conf->claim_vars = NGX_CONF_UNSET_PTR;
+  conf->set_vars = NGX_CONF_UNSET_PTR;
   conf->leeway = NGX_CONF_UNSET;
   conf->phase = NGX_CONF_UNSET;
   conf->key.files = NULL;
@@ -1102,7 +1113,7 @@ ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
 
   ngx_conf_merge_value(conf->token_variable,
                        prev->token_variable, NGX_CONF_UNSET);
-  ngx_conf_merge_ptr_value(conf->claim_vars, prev->claim_vars, NULL);
+  ngx_conf_merge_ptr_value(conf->set_vars, prev->set_vars, NULL);
 
   if (conf->key.files == NULL || conf->key.files->nelts == 0) {
     conf->key.files = prev->key.files;
