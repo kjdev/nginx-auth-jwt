@@ -79,6 +79,7 @@ typedef struct {
   json_t *revocation_kids;
   ngx_array_t *claim_requirements;
   ngx_array_t *header_requirements;
+  ngx_int_t status;
 } ngx_http_auth_jwt_ctx_t;
 
 typedef struct  {
@@ -1387,8 +1388,8 @@ ngx_http_auth_jwt_response(ngx_http_request_t *r,
 }
 
 #define ngx_http_auth_jwt_http_ok() ngx_http_auth_jwt_response(r, cf, ctx, 0, NGX_OK)
-#define ngx_http_auth_jwt_http_unauthorized_error() ngx_http_auth_jwt_response(r, cf, ctx, 0, NGX_HTTP_UNAUTHORIZED)
-#define ngx_http_auth_jwt_http_unauthorized() ngx_http_auth_jwt_response(r, cf, ctx, 1, NGX_HTTP_UNAUTHORIZED)
+#define ngx_http_auth_jwt_http_error_without_token() ngx_http_auth_jwt_response(r, cf, ctx, 0, ctx->status != 0 ? ctx->status : NGX_HTTP_UNAUTHORIZED)
+#define ngx_http_auth_jwt_http_error() ngx_http_auth_jwt_response(r, cf, ctx, 1, ctx->status != 0 ? ctx->status : NGX_HTTP_UNAUTHORIZED)
 
 static ngx_int_t
 ngx_http_auth_jwt_key_request_handler(ngx_http_request_t *r,
@@ -1989,7 +1990,7 @@ ngx_http_auth_jwt_handler(ngx_http_request_t *r, ngx_int_t phase)
     }
 
     if (ngx_http_auth_jwt_validate(r, cf, ctx) == NGX_ERROR) {
-      return ngx_http_auth_jwt_http_unauthorized();
+      return ngx_http_auth_jwt_http_error();
     }
 
     return ngx_http_auth_jwt_http_ok();
@@ -2020,7 +2021,7 @@ ngx_http_auth_jwt_handler(ngx_http_request_t *r, ngx_int_t phase)
     if (variable->not_found) {
       ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                     "auth_jwt: token variable specified was not provided");
-      return ngx_http_auth_jwt_http_unauthorized();
+      return ngx_http_auth_jwt_http_error();
     }
     var.data = variable->data;
     var.len = variable->len;
@@ -2038,7 +2039,7 @@ ngx_http_auth_jwt_handler(ngx_http_request_t *r, ngx_int_t phase)
   if (var.len == 0) {
     ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
                   "auth_jwt: token was not provided");
-    return ngx_http_auth_jwt_http_unauthorized_error();
+    return ngx_http_auth_jwt_http_error_without_token();
   }
 
   ctx->token = ngx_http_auth_jwt_strdup(r->pool, var.data, var.len);
@@ -2059,13 +2060,13 @@ ngx_http_auth_jwt_handler(ngx_http_request_t *r, ngx_int_t phase)
   if (ngx_http_auth_jwt_load_requirements(r, &cf->validate.claim_requirements,
                                           &ctx->claim_requirements)
       == NGX_ERROR) {
-    return ngx_http_auth_jwt_http_unauthorized_error();
+    return ngx_http_auth_jwt_http_error();
   }
 
   if (ngx_http_auth_jwt_load_requirements(r, &cf->validate.header_requirements,
                                           &ctx->header_requirements)
       == NGX_ERROR) {
-    return ngx_http_auth_jwt_http_unauthorized_error();
+    return ngx_http_auth_jwt_http_error();
   }
 
   /* parse jwt token */
@@ -2073,7 +2074,7 @@ ngx_http_auth_jwt_handler(ngx_http_request_t *r, ngx_int_t phase)
       || ctx->jwt == NULL) {
     ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
                   "auth_jwt: failed to parse jwt token");
-    return ngx_http_auth_jwt_http_unauthorized();
+    return ngx_http_auth_jwt_http_error();
   }
 
   /* load keys */
@@ -2083,7 +2084,7 @@ ngx_http_auth_jwt_handler(ngx_http_request_t *r, ngx_int_t phase)
 
   /* validate */
   if (ngx_http_auth_jwt_validate(r, cf, ctx) == NGX_ERROR) {
-    return ngx_http_auth_jwt_http_unauthorized();
+    return ngx_http_auth_jwt_http_error();
   }
 
   return ngx_http_auth_jwt_http_ok();
