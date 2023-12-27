@@ -298,6 +298,30 @@ but if you are using auth_jwt_revocation_list_kid directive - it means,
 that kid will grow to **REQUIRED**
 
 ```
+Syntax: auth_jwt_require $value ... [error=401 | 403] ;
+Default: -
+Context: http, server, location
+```
+
+Specifies additional checks for JWT validation.
+The value can contain text, variables, and their combination,
+and must start with a variable.
+The authentication will succeed only if all the values are not empty
+and are not equal to "0".
+
+> ```
+> map $jwt_claim_iss $valid_jwt_iss {
+>     "good" 1;
+> }
+> ...
+>
+> auth_jwt_require $valid_jwt_iss;
+> ```
+
+If any of the checks fails, the 401 error code is returned.
+The optional error parameter allows redefining the error code to 403.
+
+```
 Syntax: auth_jwt_require_claim claim_name operator $variable | json=string | string;
 Default: -
 Context: http, server, location
