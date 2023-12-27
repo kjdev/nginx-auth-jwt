@@ -118,6 +118,15 @@ For arrays, the variable keeps a list of array elements separated by commas.
 > ```
 
 ```
+Syntax: auth_jwt_header_set $variable name ...;
+Default: -
+Context: http
+```
+
+Sets the `variable` to a JOSE header parameter identified by key names.
+For arrays, the variable keeps a list of array elements separated by commas.
+
+```
 Syntax: auth_jwt_key_file file [jwks | keyval];
 Default: -
 Context: http, server, location
