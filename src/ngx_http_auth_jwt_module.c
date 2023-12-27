@@ -18,6 +18,7 @@ static ngx_int_t ngx_http_auth_jwt_variable_nowtime(ngx_http_request_t *r, ngx_h
 
 static char *ngx_http_auth_jwt_conf_set_token_variable(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static char *ngx_http_auth_jwt_conf_set_claim(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+static char *ngx_http_auth_jwt_conf_set_header(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static char *ngx_http_auth_jwt_conf_set_key_file(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static char *ngx_http_auth_jwt_conf_set_key_request(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
@@ -186,6 +187,12 @@ static ngx_command_t ngx_http_auth_jwt_commands[] = {
   { ngx_string("auth_jwt_claim_set"),
     NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE2,
     ngx_http_auth_jwt_conf_set_claim,
+    NGX_HTTP_LOC_CONF_OFFSET,
+    0,
+    NULL },
+  { ngx_string("auth_jwt_header_set"),
+    NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE2,
+    ngx_http_auth_jwt_conf_set_header,
     NGX_HTTP_LOC_CONF_OFFSET,
     0,
     NULL },
@@ -715,6 +722,16 @@ ngx_http_auth_jwt_conf_set_claim(ngx_conf_t *cf,
     ngx_http_auth_jwt_conf_set_valiable(cf, cmd, conf,
                                         NGX_HTTP_AUTH_JWT_CLAIM_VAR_PREFIX,
                                         ngx_http_auth_jwt_variable_claim);
+}
+
+static char *
+ngx_http_auth_jwt_conf_set_header(ngx_conf_t *cf,
+                                  ngx_command_t *cmd, void *conf)
+{
+  return
+    ngx_http_auth_jwt_conf_set_valiable(cf, cmd, conf,
+                                        NGX_HTTP_AUTH_JWT_HEADER_VAR_PREFIX,
+                                        ngx_http_auth_jwt_variable_header);
 }
 
 static char *
