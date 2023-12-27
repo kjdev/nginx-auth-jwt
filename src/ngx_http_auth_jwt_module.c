@@ -27,6 +27,7 @@ static char *ngx_http_auth_jwt_conf_set_revocation_kids(ngx_conf_t *cf, ngx_comm
 
 static char *ngx_http_auth_jwt_conf_set_require_claim(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static char *ngx_http_auth_jwt_conf_set_require_header(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+static char *ngx_http_auth_jwt_conf_set_require_variable(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
 static ngx_int_t ngx_http_auth_jwt_pre_conf(ngx_conf_t *cf);
 static ngx_int_t ngx_http_auth_jwt_post_conf(ngx_conf_t *cf);
@@ -58,6 +59,10 @@ typedef struct {
     ngx_flag_t sig;
     ngx_array_t *claim_requirements;
     ngx_array_t *header_requirements;
+    struct {
+      ngx_int_t error;
+      ngx_array_t *values;
+    } variable;
   } validate;
 } ngx_http_auth_jwt_loc_conf_t;
 
@@ -182,6 +187,12 @@ static ngx_command_t ngx_http_auth_jwt_commands[] = {
   { ngx_string("auth_jwt_require_header"),
     NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE3,
     ngx_http_auth_jwt_conf_set_require_header,
+    NGX_HTTP_LOC_CONF_OFFSET,
+    0,
+    NULL },
+  { ngx_string("auth_jwt_require"),
+    NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_1MORE,
+    ngx_http_auth_jwt_conf_set_require_variable,
     NGX_HTTP_LOC_CONF_OFFSET,
     0,
     NULL },
@@ -994,6 +1005,72 @@ ngx_http_auth_jwt_conf_set_require_header(ngx_conf_t *cf,
 }
 
 static char *
+ngx_http_auth_jwt_conf_set_require_variable(ngx_conf_t *cf,
+                                            ngx_command_t *cmd, void *conf)
+{
+  ngx_http_auth_jwt_loc_conf_t *lcf;
+  ngx_str_t *value;
+  ngx_uint_t i, n;
+  const char *error_with = "error=";
+  const size_t error_with_len = sizeof("error=") - 1;
+
+  lcf = conf;
+  value = cf->args->elts;
+  n = cf->args->nelts - 1;
+
+  if (lcf->validate.variable.values == NULL) {
+    lcf->validate.variable.values =
+      ngx_array_create(cf->pool, 4, sizeof(ngx_http_complex_value_t));
+    if (lcf->validate.variable.values == NULL) {
+      return "failed to allocate memory for require";
+    }
+  }
+
+  if (value[n].len >= error_with_len
+      && ngx_strncmp(value[n].data, error_with, error_with_len) == 0) {
+    value[n].data += error_with_len;
+    value[n].len -= error_with_len;
+
+    lcf->validate.variable.error = ngx_atoi(value[n].data, value[n].len);
+    if (lcf->validate.variable.error != 401
+        && lcf->validate.variable.error != 403) {
+      ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                         "\"%V\" directive failed to error: \"%V\"",
+                         &cmd->name, &value[n]);
+      return NGX_CONF_ERROR;
+    }
+
+    --n;
+  }
+
+  for (i = 1; i <= n; i++) {
+    ngx_http_complex_value_t *var;
+    ngx_http_compile_complex_value_t ccv;
+
+    if (value[i].data[0] != '$') {
+      return "not a variable specified";
+    }
+
+    var = ngx_array_push(lcf->validate.variable.values);
+    if (var == NULL) {
+      return "failed to allocate item for require";
+    }
+
+    ngx_memzero(&ccv, sizeof(ngx_http_compile_complex_value_t));
+
+    ccv.cf = cf;
+    ccv.value = &value[i];
+    ccv.complex_value = var;
+
+    if (ngx_http_compile_complex_value(&ccv) != NGX_OK) {
+      return "no value variables";
+    }
+  }
+
+  return NGX_CONF_OK;
+}
+
+static char *
 ngx_http_auth_jwt_conf_set_key_request(ngx_conf_t *cf,
                                        ngx_command_t *cmd, void *conf)
 {
@@ -1115,6 +1192,8 @@ ngx_http_auth_jwt_create_loc_conf(ngx_conf_t *cf)
   conf->revocation_kids = NULL;
   conf->validate.claim_requirements = NULL;
   conf->validate.header_requirements = NULL;
+  conf->validate.variable.error = NGX_CONF_UNSET;
+  conf->validate.variable.values = NULL;
   conf->validate.exp = NGX_CONF_UNSET;
   conf->validate.sig = NGX_CONF_UNSET;
 
@@ -1203,6 +1282,33 @@ ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
     }
     for (i = 0; i < n; i++) {
       require[i] = var[i];
+    }
+  }
+
+  ngx_conf_merge_value(conf->validate.variable.error,
+                       prev->validate.variable.error, NGX_HTTP_UNAUTHORIZED);
+  if (conf->validate.variable.values == NULL
+      || conf->validate.variable.values->nelts == 0) {
+    conf->validate.variable.values = prev->validate.variable.values;
+  }
+  else if (prev->validate.variable.values
+           && prev->validate.variable.values->nelts) {
+    ngx_uint_t i, len, n;
+    ngx_http_complex_value_t *value, *var;
+
+    len = conf->validate.variable.values->nelts;
+    n = prev->validate.variable.values->nelts;
+
+    ngx_array_push_n(conf->validate.variable.values, n);
+
+    value = conf->validate.variable.values->elts;
+    var = prev->validate.variable.values->elts;
+
+    for (i = 0; i < len; i++) {
+      value[n + i] = value[i];
+    }
+    for (i = 0; i < n; i++) {
+      value[i] = var[i];
     }
   }
 
@@ -1632,6 +1738,43 @@ ngx_http_auth_jwt_get_grant_time(ngx_http_request_t *r, jwt_t *jwt, char *claim)
 }
 
 static ngx_int_t
+ngx_http_auth_jwt_validate_variable(ngx_http_request_t *r,
+                                    ngx_http_auth_jwt_loc_conf_t *cf,
+                                    ngx_http_auth_jwt_ctx_t *ctx)
+{
+  ngx_uint_t i;
+  ngx_http_complex_value_t *var;
+
+  if (!cf->validate.variable.values) {
+    return NGX_OK;
+  }
+
+  var = cf->validate.variable.values->elts;
+
+  for (i = 0; i < cf->validate.variable.values->nelts; i++) {
+    ngx_str_t value = ngx_null_string;
+
+    if (ngx_http_complex_value(r, &var[i], &value) != NGX_OK) {
+      ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                    "auth_jwt: variable specified was not provided: %V",
+                    &(var[i].value));
+      return NGX_ERROR;
+    }
+
+    if (!value.data || value.len == 0
+        || ngx_strncmp("0", value.data, value.len) == 0) {
+      ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
+                    "auth_jwt: rejected due to %V variable invalid",
+                    &(var[i].value));
+      ctx->status = cf->validate.variable.error;
+      return NGX_ERROR;
+    }
+  }
+
+  return NGX_OK;
+}
+
+static ngx_int_t
 ngx_http_auth_jwt_validate(ngx_http_request_t *r,
                            ngx_http_auth_jwt_loc_conf_t *cf,
                            ngx_http_auth_jwt_ctx_t *ctx)
@@ -1901,7 +2044,7 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
   /* validate signature */
   if (!cf->validate.sig) {
     ctx->verified = 1;
-    return NGX_OK;
+    return ngx_http_auth_jwt_validate_variable(r, cf, ctx);
   }
 
   if (!ctx->keys) {
@@ -1918,7 +2061,7 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
     if (jwt_verify_sig(ctx->jwt, (char *) ctx->token, ctx->payload_len,
                        (unsigned char *) key, strlen(key)) == 0) {
       ctx->verified = 1;
-      return NGX_OK;
+      return ngx_http_auth_jwt_validate_variable(r, cf, ctx);
     }
 
     ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
@@ -1936,7 +2079,7 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
     if (jwt_verify_sig(ctx->jwt, (char *) ctx->token, ctx->payload_len,
                        (unsigned char *) key, strlen(key)) == 0) {
       ctx->verified = 1;
-      return NGX_OK;
+      return ngx_http_auth_jwt_validate_variable(r, cf, ctx);
     }
   }
 
