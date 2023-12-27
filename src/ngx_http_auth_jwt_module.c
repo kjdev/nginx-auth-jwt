@@ -862,39 +862,6 @@ ngx_http_auth_jwt_conf_set_key_file(ngx_conf_t *cf,
 }
 
 static char *
-ngx_http_auth_jwt_set_complex_value_slot(ngx_conf_t *cf,
-                                         ngx_command_t *cmd, void *conf,
-                                         ngx_str_t *value)
-{
-  ngx_http_compile_complex_value_t ccv;
-  ngx_http_complex_value_t **cv;
-  char *p = conf;
-
-  cv = (ngx_http_complex_value_t **) (p + cmd->offset);
-
-  if (*cv != NGX_CONF_UNSET_PTR && *cv != NULL) {
-    return NGX_CONF_ERROR;
- }
-
-  *cv = ngx_palloc(cf->pool, sizeof(ngx_http_complex_value_t));
-  if (*cv == NULL) {
-    return NGX_CONF_ERROR;
-  }
-
-  ngx_memzero(&ccv, sizeof(ngx_http_compile_complex_value_t));
-
-  ccv.cf = cf;
-  ccv.value = value;
-  ccv.complex_value = *cv;
-
-  if (ngx_http_compile_complex_value(&ccv) != NGX_OK) {
-    return NGX_CONF_ERROR;
-  }
-
-  return NGX_CONF_OK;
-}
-
-static char *
 ngx_http_auth_jwt_conf_set_require(ngx_conf_t *cf, ngx_command_t *cmd,
                                    ngx_array_t ** requirements)
 {
@@ -948,8 +915,20 @@ ngx_http_auth_jwt_conf_set_require(ngx_conf_t *cf, ngx_command_t *cmd,
   }
 
   if (value[3].len != 0) {
-    if (ngx_http_auth_jwt_set_complex_value_slot(cf, cmd, &require->value,
-                                                 &value[3]) != NGX_CONF_OK) {
+    ngx_http_compile_complex_value_t ccv;
+
+    require->value = ngx_palloc(cf->pool, sizeof(ngx_http_complex_value_t));
+    if (require->value == NULL) {
+      return "failed to allocate value variables";
+    }
+
+    ngx_memzero(&ccv, sizeof(ngx_http_compile_complex_value_t));
+
+    ccv.cf = cf;
+    ccv.value = &value[3];
+    ccv.complex_value = require->value;
+
+    if (ngx_http_compile_complex_value(&ccv) != NGX_OK) {
       return "no value variables";
     }
   }
