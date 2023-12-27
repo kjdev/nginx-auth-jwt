@@ -81,6 +81,22 @@ location / {
 
 ### Directives
 
+- [auth_jwt](#auth_jwt)
+- [auth\_jwt\_claim\_set](#auth_jwt_claim_set)
+- [auth\_jwt\_header\_set](#auth_jwt_header_set)
+- [auth\_jwt\_key\_file](#auth_jwt_key_file)
+- [auth\_jwt\_key\_request](#auth_jwt_key_request)
+- [auth\_jwt\_validate\_exp](#auth_jwt_validate_exp)
+- [auth\_jwt\_validate\_sig](#auth_jwt_validate_sig)
+- [auth\_jwt\_leeway](#auth_jwt_leeway)
+- [auth\_jwt\_phase](#auth_jwt_phase)
+- [auth\_jwt\_revocation\_list\_sub](#auth_jwt_revocation_list_sub)
+- [auth\_jwt\_revocation\_list\_kid](#auth_jwt_revocation_list_kid)
+- [auth\_jwt\_require](#auth_jwt_require)
+- [auth\_jwt\_require\_claim](#auth_jwt_require_claim)
+- [auth\_jwt\_require\_header](#auth_jwt_require_header)
+
+<a name="auth_jwt"></a>
 ```
 Syntax: auth_jwt string [token=$variable] | off;
 Default: auth_jwt off;
@@ -104,6 +120,7 @@ JWT may be also passed as a cookie or a part of a query string:
 The special value off cancels the effect of the auth_jwt directive inherited
 from the previous configuration level.
 
+<a name="auth_jwt_claim_set"></a>
 ```
 Syntax: auth_jwt_claim_set $variable name ...;
 Default: -
@@ -117,6 +134,7 @@ For arrays, the variable keeps a list of array elements separated by commas.
 > auth_jwt_claim_set $jwt_audience aud;
 > ```
 
+<a name="auth_jwt_header_set"></a>
 ```
 Syntax: auth_jwt_header_set $variable name ...;
 Default: -
@@ -126,6 +144,7 @@ Context: http
 Sets the `variable` to a JOSE header parameter identified by key names.
 For arrays, the variable keeps a list of array elements separated by commas.
 
+<a name="auth_jwt_key_file"></a>
 ```
 Syntax: auth_jwt_key_file file [jwks | keyval];
 Default: -
@@ -150,6 +169,7 @@ Several `auth_jwt_key_file` directives can be specified on the same level.
 > auth_jwt_key_file conf/keys.json keyval;
 > ```
 
+<a name="auth_jwt_key_request"></a>
 ```
 Syntax: auth_jwt_key_request uri [jwks | keyval];
 Default: -
@@ -193,6 +213,7 @@ Several `auth_jwt_key_request` directives can be specified on the same level.
 > auth_jwt_key_request /public_key keyval;
 > ```
 
+<a name="auth_jwt_validate_exp"></a>
 ```
 Syntax: auth_jwt_validate_exp on | off;
 Default: auth_jwt_validate_exp on;
@@ -203,6 +224,7 @@ Determines whether to validating the exp JWT claim.
 
 > Do not process if verified by `auth_jwt_require_claim` directive
 
+<a name="auth_jwt_validate_sig"></a>
 ```
 Syntax: auth_jwt_validate_sig on | off;
 Default: auth_jwt_validate_sig on;
@@ -211,6 +233,7 @@ Context: http, server, location
 
 Determines whether to validating JWT signature.
 
+<a name="auth_jwt_leeway"></a>
 ```
 Syntax: auth_jwt_leeway time;
 Default: auth_jwt_leeway 0s;
@@ -220,6 +243,7 @@ Context: http, server, location
 Sets the maximum allowable leeway to compensate clock skew
 when verifying the exp and nbf JWT claims.
 
+<a name="auth_jwt_phase"></a>
 ```
 Syntax: auth_jwt_phase preaccess | access;
 Default: auth_jwt_phase access;
@@ -230,9 +254,11 @@ Specifies the phase to be processed.
 
 > ACCESS phase is not executed when a call is made from a subrequest.
 >
-> In the case of a call from a subrequest, `auth_jwt_key_request` cannot
+> In the case of a call from a subrequest,
+> [auth\_jwt\_key\_request](#auth_jwt_key_request) cannot
 > be processed. (nested in-memory subrequest)
 
+<a name="auth_jwt_revocation_list_sub"></a>
 ```
 Syntax: auth_jwt_revocation_list_sub file;
 Default: -
@@ -263,6 +289,7 @@ Every object should have key(jwt sub) and any additional value, if it needed.
 > }
 > ```
 
+<a name="auth_jwt_revocation_list_kid"></a>
 ```
 Syntax: auth_jwt_revocation_list_kid file;
 Default: -
@@ -294,9 +321,12 @@ if it needed.
 
 **Note:** as we know, kid is OPTIONAL parameter by
 [rfc7515](https://datatracker.ietf.org/doc/html/rfc7515#page-11),
-but if you are using auth_jwt_revocation_list_kid directive - it means,
+but if you are using
+[auth\_jwt\_revocation\_list\_kid](#auth_jwt_revocation_list_kid) directive
+- it means,
 that kid will grow to **REQUIRED**
 
+<a name="auth_jwt_require"></a>
 ```
 Syntax: auth_jwt_require $value ... [error=401 | 403] ;
 Default: -
@@ -321,6 +351,7 @@ and are not equal to "0".
 If any of the checks fails, the 401 error code is returned.
 The optional error parameter allows redefining the error code to 403.
 
+<a name="auth_jwt_require_claim"></a>
 ```
 Syntax: auth_jwt_require_claim claim_name operator $variable | json=string | string;
 Default: -
@@ -392,6 +423,7 @@ required json[^json] value.
 
 [^json]: containing only single value is pretty valid.
 
+<a name="auth_jwt_require_header"></a>
 ```
 Syntax: auth_jwt_require_header header_name operator $variable;
 Default: -
@@ -400,7 +432,7 @@ Context: http, server, location
 Specifies a requirement for header in jwt token.
 
 All possibilities of this directive are the same as for
-```auth_jwt_require_claim``` above.
+[auth\_jwt\_require\_claim](#auth_jwt_require_claim) above.
 
 ### Embedded Variables
 
