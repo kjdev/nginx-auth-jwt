@@ -79,7 +79,7 @@
  *
  */
 
-/* Originally of https://github.com/benmcollins/libjwt at v1.15.3 */
+/* Originally of https://github.com/benmcollins/libjwt at v1.17.0 */
 
 
 #ifndef _JWT_BASE64_H_

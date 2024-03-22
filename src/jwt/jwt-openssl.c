@@ -1,11 +1,12 @@
-/* Copyright (C) 2015-2022 Ben Collins <bcollins@maclara-llc.com>
+/* Copyright (C) 2015-2023 Ben Collins <bcollins@maclara-llc.com>
    This file is part of the JWT C Library
 
+   SPDX-License-Identifier:  MPL-2.0
    This Source Code Form is subject to the terms of the Mozilla Public
    License, v. 2.0. If a copy of the MPL was not distributed with this
    file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* Originally of https://github.com/benmcollins/libjwt at v1.15.3 */
+/* Originally of https://github.com/benmcollins/libjwt at v1.17.0 */
 
 #include <stdlib.h>
 #include <string.h>
@@ -61,7 +62,7 @@ int jwt_sign_sha_hmac(jwt_t *jwt, char **out, unsigned int *len,
 	const EVP_MD *alg;
 
 	switch (jwt->alg) {
-        /* HMAC */
+	/* HMAC */
 	case JWT_ALG_HS256:
 		alg = EVP_sha256();
 		break;
@@ -145,7 +146,7 @@ int jwt_verify_sha_hmac(jwt_t *jwt, const char *head, unsigned int head_len, con
 	jwt_base64uri_encode(buf);
 
 	/* And now... */
-	ret = strcmp(buf, sig) ? EINVAL : 0;
+	ret = jwt_strcmp(buf, sig) ? EINVAL : 0;
 
 jwt_verify_hmac_done:
 	BIO_free_all(b64);
@@ -159,6 +160,7 @@ int jwt_sign_sha_pem(jwt_t *jwt, char **out, unsigned int *len,
 		     const char *str, unsigned int str_len)
 {
 	EVP_MD_CTX *mdctx = NULL;
+	EVP_PKEY_CTX *pkey_ctx = NULL;
 	ECDSA_SIG *ec_sig = NULL;
 	const BIGNUM *ec_sig_r = NULL;
 	const BIGNUM *ec_sig_s = NULL;
@@ -169,7 +171,7 @@ int jwt_sign_sha_pem(jwt_t *jwt, char **out, unsigned int *len,
 	int pkey_type;
 	unsigned char *sig;
 	int ret = 0;
-	size_t slen;
+	size_t slen, padding = 0;
 
 	switch (jwt->alg) {
 	/* RSA */
@@ -185,6 +187,25 @@ int jwt_sign_sha_pem(jwt_t *jwt, char **out, unsigned int *len,
 		alg = EVP_sha512();
 		type = EVP_PKEY_RSA;
 		break;
+
+#ifndef HAVE_OPENSSL
+	/* RSA-PSS */
+	case JWT_ALG_PS256:
+		alg = EVP_sha256();
+		type = EVP_PKEY_RSA_PSS;
+		padding = RSA_PKCS1_PSS_PADDING;
+		break;
+	case JWT_ALG_PS384:
+		alg = EVP_sha384();
+		type = EVP_PKEY_RSA_PSS;
+		padding = RSA_PKCS1_PSS_PADDING;
+		break;
+	case JWT_ALG_PS512:
+		alg = EVP_sha512();
+		type = EVP_PKEY_RSA_PSS;
+		padding = RSA_PKCS1_PSS_PADDING;
+		break;
+#endif
 
 	/* ECC */
 	case JWT_ALG_ES256:
@@ -224,7 +245,10 @@ int jwt_sign_sha_pem(jwt_t *jwt, char **out, unsigned int *len,
 		SIGN_ERROR(ENOMEM);
 
 	/* Initialize the DigestSign operation using alg */
-	if (EVP_DigestSignInit(mdctx, NULL, alg, NULL, pkey) != 1)
+	if (EVP_DigestSignInit(mdctx, &pkey_ctx, alg, NULL, pkey) != 1)
+		SIGN_ERROR(EINVAL);
+
+	if (padding > 0 && EVP_PKEY_CTX_set_rsa_padding(pkey_ctx, padding) < 0)
 		SIGN_ERROR(EINVAL);
 
 	/* Call update with the message */
@@ -333,6 +357,7 @@ int jwt_verify_sha_pem(jwt_t *jwt, const char *head, unsigned int head_len, cons
 {
 	unsigned char *sig = NULL;
 	EVP_MD_CTX *mdctx = NULL;
+	EVP_PKEY_CTX *pkey_ctx = NULL;
 	ECDSA_SIG *ec_sig = NULL;
 	BIGNUM *ec_sig_r = NULL;
 	BIGNUM *ec_sig_s = NULL;
@@ -343,6 +368,7 @@ int jwt_verify_sha_pem(jwt_t *jwt, const char *head, unsigned int head_len, cons
 	BIO *bufkey = NULL;
 	int ret = 0;
 	int slen;
+	size_t padding = 0;
 
 	switch (jwt->alg) {
 	/* RSA */
@@ -358,6 +384,25 @@ int jwt_verify_sha_pem(jwt_t *jwt, const char *head, unsigned int head_len, cons
 		alg = EVP_sha512();
 		type = EVP_PKEY_RSA;
 		break;
+
+#ifndef HAVE_OPENSSL
+	/* RSA-PSS */
+	case JWT_ALG_PS256:
+		alg = EVP_sha256();
+		type = EVP_PKEY_RSA_PSS;
+		padding = RSA_PKCS1_PSS_PADDING;
+		break;
+	case JWT_ALG_PS384:
+		alg = EVP_sha384();
+		type = EVP_PKEY_RSA_PSS;
+		padding = RSA_PKCS1_PSS_PADDING;
+		break;
+	case JWT_ALG_PS512:
+		alg = EVP_sha512();
+		type = EVP_PKEY_RSA_PSS;
+		padding = RSA_PKCS1_PSS_PADDING;
+		break;
+#endif
 
 	/* ECC */
 	case JWT_ALG_ES256:
@@ -417,7 +462,7 @@ int jwt_verify_sha_pem(jwt_t *jwt, const char *head, unsigned int head_len, cons
 		if (ecgroup == NULL)
 			VERIFY_ERROR(ENOMEM);
 
-	degree = EC_GROUP_get_degree(ecgroup);
+		degree = EC_GROUP_get_degree(ecgroup);
 
 		EC_GROUP_free(ecgroup);
 #else
@@ -462,7 +507,10 @@ int jwt_verify_sha_pem(jwt_t *jwt, const char *head, unsigned int head_len, cons
 		VERIFY_ERROR(ENOMEM);
 
 	/* Initialize the DigestVerify operation using alg */
-	if (EVP_DigestVerifyInit(mdctx, NULL, alg, NULL, pkey) != 1)
+	if (EVP_DigestVerifyInit(mdctx, &pkey_ctx, alg, NULL, pkey) != 1)
+		VERIFY_ERROR(EINVAL);
+
+	if (padding > 0 && EVP_PKEY_CTX_set_rsa_padding(pkey_ctx, padding) < 0)
 		VERIFY_ERROR(EINVAL);
 
 	/* Call update with the message */

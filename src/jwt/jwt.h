@@ -1,11 +1,12 @@
-/* Copyright (C) 2015-2022 Ben Collins <bcollins@maclara-llc.com>
+/* Copyright (C) 2015-2023 Ben Collins <bcollins@maclara-llc.com>
    This file is part of the JWT C Library
 
+   SPDX-License-Identifier:  MPL-2.0
    This Source Code Form is subject to the terms of the Mozilla Public
    License, v. 2.0. If a copy of the MPL was not distributed with this
    file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* Originally of https://github.com/benmcollins/libjwt at v1.15.3 */
+/* Originally of https://github.com/benmcollins/libjwt at v1.17.0 */
 
 /**
  * @file jwt.h
@@ -65,6 +66,11 @@ typedef enum jwt_alg {
 	JWT_ALG_ES256,
 	JWT_ALG_ES384,
 	JWT_ALG_ES512,
+#ifndef HAVE_OPENSSL
+	JWT_ALG_PS256,
+	JWT_ALG_PS384,
+	JWT_ALG_PS512,
+#endif
 	JWT_ALG_TERM
 } jwt_alg_t;
 
@@ -713,7 +719,7 @@ JWT_EXPORT void jwt_get_alloc(jwt_malloc_t *pmalloc, jwt_realloc_t *prealloc, jw
  /** @} */
 
 /**
- * @defgroup jwt_vaildate JWT validation functions
+ * @defgroup jwt_validate JWT validation functions
  * These functions allow you to define requirements for JWT validation.
  *
  * The most basic validation is that the JWT uses the expected algorithm.
@@ -979,6 +985,21 @@ JWT_EXPORT int jwt_valid_set_exp_leeway(jwt_valid_t *jwt_valid, const time_t exp
  *     header or body.
  */
 JWT_EXPORT int jwt_valid_set_headers(jwt_valid_t *jwt_valid, int hdr);
+
+/**
+ * Parses exceptions and returns a comma delimited and human-readable string.
+ *
+ * The returned string must be freed by the caller. If you changed the allocation
+ * method using jwt_set_alloc, then you must use jwt_free_str() to free the memory.
+ *
+ * Note: This string is currently en-US ASCII only. Language support will come in the
+ * future.
+ *
+ * @param exceptions Integer containing the exception flags.
+ * @return A null terminated string on success, NULL on error with errno
+ *     set appropriately.
+ */
+JWT_EXPORT char *jwt_exception_str(unsigned int exceptions);
 
 /** @} */
 

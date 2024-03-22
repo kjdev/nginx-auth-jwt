@@ -1,11 +1,12 @@
-/* Copyright (C) 2015-2022 Ben Collins <bcollins@maclara-llc.com>
+/* Copyright (C) 2015-2024 Ben Collins <bcollins@maclara-llc.com>
    This file is part of the JWT C Library
 
+   SPDX-License-Identifier:  MPL-2.0
    This Source Code Form is subject to the terms of the Mozilla Public
    License, v. 2.0. If a copy of the MPL was not distributed with this
    file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* Originally of https://github.com/benmcollins/libjwt at v1.15.3 */
+/* Originally of https://github.com/benmcollins/libjwt at v1.17.0 */
 
 #include <stdlib.h>
 #include <string.h>
@@ -16,6 +17,9 @@
 
 #include "jwt-private.h"
 #include "base64.h"
+
+/* Number of elements in an array */
+#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
 static jwt_malloc_t pfn_malloc = NULL;
 static jwt_realloc_t pfn_realloc = NULL;
@@ -29,7 +33,7 @@ void *jwt_malloc(size_t size)
 	return malloc(size);
 }
 
-static void *jwt_realloc(void* ptr, size_t size)
+static void *jwt_realloc(void *ptr, size_t size)
 {
 	if (pfn_realloc)
 		return pfn_realloc(ptr, size);
@@ -60,10 +64,39 @@ static char *jwt_strdup(const char *str)
 	return result;
 }
 
+/* A time-safe strcmp function */
+int jwt_strcmp(const char *str1, const char *str2)
+{
+	/* Get the LONGEST length */
+	int len1 = strlen(str1);
+	int len2 = strlen(str2);
+	int len_max = len1 >= len2 ? len1 : len2;
+
+	int i, ret = 0;
+
+	/* Iterate the entire longest string no matter what. Only testing
+	 * the shortest string would still allow attacks for
+	 * "a" == "aKJSDHkjashaaHJASJ", adding a character each time one
+	 * is found. */
+	for (i = 0; i < len_max; i++) {
+		char c1, c2;
+
+		c1 = (i < len1) ? str1[i] : 0;
+		c2 = (i < len2) ? str2[i] : 0;
+
+		ret |= c1 ^ c2;
+	}
+
+	/* Don't forget to check length */
+	ret |= len1 ^ len2;
+
+	return ret;
+}
+
 static void *jwt_calloc(size_t nmemb, size_t size)
 {
 	size_t total_size;
-	void* ptr;
+	void *ptr;
 
 	total_size = nmemb * size;
 	if (!total_size)
@@ -99,6 +132,14 @@ const char *jwt_alg_str(jwt_alg_t alg)
 		return "ES384";
 	case JWT_ALG_ES512:
 		return "ES512";
+#ifndef HAVE_OPENSSL
+	case JWT_ALG_PS256:
+		return "PS256";
+	case JWT_ALG_PS384:
+		return "PS384";
+	case JWT_ALG_PS512:
+		return "PS512";
+#endif
 	default:
 		return NULL;
 	}
@@ -129,6 +170,14 @@ jwt_alg_t jwt_str_alg(const char *alg)
 		return JWT_ALG_ES384;
 	else if (!strcmp(alg, "ES512"))
 		return JWT_ALG_ES512;
+#ifndef HAVE_OPENSSL
+	else if (!strcmp(alg, "PS256"))
+		return JWT_ALG_PS256;
+	else if (!strcmp(alg, "PS384"))
+		return JWT_ALG_PS384;
+	else if (!strcmp(alg, "PS512"))
+		return JWT_ALG_PS512;
+#endif
 
 	return JWT_ALG_INVAL;
 }
@@ -279,11 +328,10 @@ static const char *get_js_string(json_t *js, const char *key)
 
 	js_val = json_object_get(js, key);
 	if (js_val) {
-		if (json_typeof(js_val) == JSON_STRING) {
+		if (json_typeof(js_val) == JSON_STRING)
 			val = json_string_value(js_val);
-		} else {
+		else
 			errno = EINVAL;
-		}
 	} else {
 		errno = ENOENT;
 	}
@@ -298,11 +346,10 @@ static long get_js_int(json_t *js, const char *key)
 
 	js_val = json_object_get(js, key);
 	if (js_val) {
-		if (json_typeof(js_val) == JSON_INTEGER) {
+		if (json_typeof(js_val) == JSON_INTEGER)
 			val = (long)json_integer_value(js_val);
-		} else {
+		else
 			errno = EINVAL;
-		}
 	} else {
 		errno = ENOENT;
 	}
@@ -318,14 +365,14 @@ static int get_js_bool(json_t *js, const char *key)
 	js_val = json_object_get(js, key);
 	if (js_val) {
 		switch (json_typeof(js_val)) {
-			case JSON_TRUE:
-				val = 1;
-				break;
-			case JSON_FALSE:
-				val = 0;
-				break;
-			default:
-				errno = EINVAL;
+		case JSON_TRUE:
+			val = 1;
+			break;
+		case JSON_FALSE:
+			val = 0;
+			break;
+		default:
+			errno = EINVAL;
 		}
 	} else {
 		errno = ENOENT;
@@ -431,6 +478,13 @@ static int jwt_sign(jwt_t *jwt, char **out, unsigned int *len, const char *str, 
 	case JWT_ALG_RS384:
 	case JWT_ALG_RS512:
 
+#ifndef HAVE_OPENSSL
+	/* PS */
+	case JWT_ALG_PS256:
+	case JWT_ALG_PS384:
+	case JWT_ALG_PS512:
+#endif
+
 	/* ECC */
 	case JWT_ALG_ES256:
 	case JWT_ALG_ES384:
@@ -456,6 +510,13 @@ static int jwt_verify(jwt_t *jwt, const char *head, unsigned int head_len, const
 	case JWT_ALG_RS256:
 	case JWT_ALG_RS384:
 	case JWT_ALG_RS512:
+
+#ifndef HAVE_OPENSSL
+	/* PS */
+	case JWT_ALG_PS256:
+	case JWT_ALG_PS384:
+	case JWT_ALG_PS512:
+#endif
 
 	/* ECC */
 	case JWT_ALG_ES256:
@@ -498,9 +559,8 @@ static int jwt_parse_head(jwt_t *jwt, char *head)
 
 	alg = get_js_string(jwt->headers, "alg");
 	jwt->alg = jwt_str_alg(alg);
-	if (jwt->alg == JWT_ALG_INVAL) {
+	if (jwt->alg == JWT_ALG_INVAL)
 		return EINVAL;
-	}
 
 	return 0;
 }
@@ -518,9 +578,8 @@ static int jwt_verify_head(jwt_t *jwt)
 		}
 	} else {
 		/* If alg is NONE, there should not be a key */
-		if (jwt->key) {
+		if (jwt->key)
 			ret = EINVAL;
-		}
 	}
 
 	return ret;
@@ -561,19 +620,17 @@ int jwt_parse(jwt_t **jwt, const char *token, unsigned int *len)
 	/* Now that we have everything split up, let's check out the
 	 * header. */
 	ret = jwt_new(&new);
-	if (ret) {
+	if (ret)
 		goto parse_done;
-	}
 
-	if ((ret = jwt_parse_head(new, head))) {
+	if ((ret = jwt_parse_head(new, head)))
 		goto parse_done;
-	}
 
 	ret = jwt_parse_body(new, body);
 parse_done:
 	if (ret) {
 		jwt_free(new);
-        	*jwt = NULL;
+		*jwt = NULL;
 	} else {
 		*jwt = new;
 		*len = sig - head;
@@ -638,7 +695,7 @@ decode_done:
 	return ret;
 }
 
-int jwt_decode_2(jwt_t **jwt, const char *token, jwt_key_p_t key_provider) 
+int jwt_decode_2(jwt_t **jwt, const char *token, jwt_key_p_t key_provider)
 {
 	jwt_t *new = NULL;
 	int ret = EINVAL;
@@ -646,17 +703,15 @@ int jwt_decode_2(jwt_t **jwt, const char *token, jwt_key_p_t key_provider)
 	jwt_key_t key;
 
 	ret = jwt_parse(jwt, token, &payload_len);
-	if (ret) {
+	if (ret)
 		return ret;
-	}
 	new = *jwt;
 
 	/* Obtain the key. */
 	if (new->alg != JWT_ALG_NONE) {
 		ret = key_provider(new, &key);
-		if (ret) {
+		if (ret)
 			goto decode_done;
-		}
 		ret = jwt_copy_key(new, key.jwt_key, key.jwt_key_len);
 		if (ret)
 			goto decode_done;
@@ -951,11 +1006,10 @@ static int __append_str(char **buf, const char *str)
 {
 	char *new;
 
-	if (*buf == NULL) {
+	if (*buf == NULL)
 		new = jwt_calloc(1, strlen(str) + 1);
-	} else {
+	else
 		new = jwt_realloc(*buf, strlen(*buf) + strlen(str) + 1);
-	}
 
 	if (new == NULL)
 		return ENOMEM;
@@ -971,7 +1025,7 @@ static int __append_str(char **buf, const char *str)
 	int ret = __append_str(__buf, __str);	\
 	if (ret)				\
 		return ret;			\
-} while(0)
+} while (0)
 
 static int write_js(const json_t *js, char **buf, int pretty)
 {
@@ -1006,12 +1060,11 @@ static int jwt_write_head(jwt_t *jwt, char **buf, int pretty)
 
 		/* Only add default 'typ' header if it has not been defined,
 		 * allowing for any value of it. This allows for signaling
-		 * of application specific extentions to JWT, such as PASSporT,
+		 * of application specific extensions to JWT, such as PASSporT,
 		 * RFC 8225. */
 		if ((ret = jwt_add_header(jwt, "typ", "JWT"))) {
-			if (ret != EEXIST) {
+			if (ret != EEXIST)
 				return ret;
-			}
 		}
 	}
 
@@ -1223,7 +1276,7 @@ int jwt_set_alloc(jwt_malloc_t pmalloc, jwt_realloc_t prealloc, jwt_free_t pfree
 	return 0;
 }
 
-void jwt_get_alloc(jwt_malloc_t *pmalloc, jwt_realloc_t* prealloc, jwt_free_t *pfree)
+void jwt_get_alloc(jwt_malloc_t *pmalloc, jwt_realloc_t *prealloc, jwt_free_t *pfree)
 {
 	if (pmalloc)
 		*pmalloc = pfn_malloc;
@@ -1470,7 +1523,7 @@ int jwt_valid_del_grants(jwt_valid_t *jwt_valid, const char *grant)
 #define _SET_AND_RET(__v, __e) do {	\
 	__v->status |= __e;		\
 	return __v->status;		\
-} while(0)
+} while (0)
 
 unsigned int jwt_validate(jwt_t *jwt, jwt_valid_t *jwt_valid)
 {
@@ -1534,6 +1587,57 @@ unsigned int jwt_validate(jwt_t *jwt, jwt_valid_t *jwt_valid)
 	}
 
 	return jwt_valid->status;
+}
+
+typedef struct {
+	int error;
+	char *str;
+} jwt_exception_dict_t;
+
+static jwt_exception_dict_t jwt_exceptions[] = {
+	/* { JWT_VALIDATION_SUCCESS, "SUCCESS" }, */
+	{ JWT_VALIDATION_ERROR, "general failures" },
+	{ JWT_VALIDATION_ALG_MISMATCH, "algorithm mismatch" },
+	{ JWT_VALIDATION_EXPIRED, "token expired" },
+	{ JWT_VALIDATION_TOO_NEW, "token future dated" },
+	{ JWT_VALIDATION_ISS_MISMATCH, "issuer mismatch" },
+	{ JWT_VALIDATION_SUB_MISMATCH, "subject mismatch" },
+	{ JWT_VALIDATION_AUD_MISMATCH, "audience mismatch" },
+	{ JWT_VALIDATION_GRANT_MISSING, "grant missing" },
+	{ JWT_VALIDATION_GRANT_MISMATCH, "grant mismatch" },
+};
+
+char *jwt_exception_str(unsigned int exceptions)
+{
+	int rc;
+	char *str = NULL;
+
+	if (exceptions == JWT_VALIDATION_SUCCESS) {
+		if ((rc = __append_str(&str, "success")))
+			goto fail;
+		return str;
+	}
+
+	for (size_t i = 0; i < ARRAY_SIZE(jwt_exceptions); i++) {
+		if (!(jwt_exceptions[i].error & exceptions))
+			continue;
+
+		if (str && (rc = __append_str(&str, ", ")))
+			goto fail;
+
+		if ((rc = __append_str(&str, jwt_exceptions[i].str)))
+			goto fail;
+	}
+
+	/* check if none of the exceptions matched? */
+	if (!str && (rc = __append_str(&str, "unknown exceptions")))
+		goto fail;
+
+	return str;
+fail:
+	errno = rc;
+	jwt_freemem(str);
+	return NULL;
 }
 
 /* Extends */
