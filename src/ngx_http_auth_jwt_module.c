@@ -6,6 +6,7 @@
 #include "jwt/jwt.h"
 #include "jwt/jwt-private.h"
 #include "jwk.h"
+#include "jwt_get_claims.h"
 #include "jwt_requirement_operators.h"
 
 #define NGX_HTTP_AUTH_JWT_CLAIM_VAR_PREFIX "jwt_claim_"
@@ -96,8 +97,8 @@ typedef struct {
   ngx_http_auth_jwt_ctx_t *ctx;
 } ngx_http_auth_jwt_key_request_t;
 
-typedef const char *(*auth_jwt_get)(jwt_t *jwt, const char *key);
-typedef char *(*auth_jwt_get_json)(jwt_t *jwt, const char *key);
+typedef const char *(*auth_jwt_get)(jwt_t *jwt, const char *key, const char *delim, const char *quote);
+typedef char *(*auth_jwt_get_json)(jwt_t *jwt, const char *key, const char *delim, const char *quote);
 
 static ngx_conf_enum_t ngx_http_auth_jwt_phases[] = {
   { ngx_string("PREACCESS"), NGX_HTTP_PREACCESS_PHASE },
@@ -480,8 +481,8 @@ ngx_http_auth_jwt_variable_find(ngx_http_request_t *r,
 
   if (use == NGX_HTTP_AUTH_JWT_VARIABLE_HEADER) {
     prefix = NGX_HTTP_AUTH_JWT_HEADER_VAR_PREFIX;
-    jwt_get = jwt_get_header;
-    jwt_get_json = jwt_get_headers_json;
+    jwt_get = ngx_http_auth_jwt_get_header;
+    jwt_get_json = ngx_http_auth_jwt_get_headers_json;
   }
   else {
     if (!ctx->verified) {
@@ -492,8 +493,8 @@ ngx_http_auth_jwt_variable_find(ngx_http_request_t *r,
     if (use == NGX_HTTP_AUTH_JWT_VARIABLE_CLAIM) {
       prefix = NGX_HTTP_AUTH_JWT_CLAIM_VAR_PREFIX;
     }
-    jwt_get = jwt_get_grant;
-    jwt_get_json = jwt_get_grants_json;
+    jwt_get = ngx_http_auth_jwt_get_grant;
+    jwt_get_json = ngx_http_auth_jwt_get_grants_json;
   }
 
   if (prefix) {
@@ -514,11 +515,11 @@ ngx_http_auth_jwt_variable_find(ngx_http_request_t *r,
     ngx_memcpy(key, var, len);
   }
 
-  value = (*jwt_get)(ctx->jwt, (char *) key);
+  value = (*jwt_get)(ctx->jwt, (char *) key, NULL, NULL);
   if (value == NULL) {
     size_t i, t;
 
-    str = (*jwt_get_json)(ctx->jwt, (char *) key);
+    str = (*jwt_get_json)(ctx->jwt, (char *) key, NULL, NULL);
     if (str == NULL) {
       v->not_found = 1;
       return NGX_OK;
@@ -1561,15 +1562,16 @@ ngx_http_auth_jwt_load_keys(ngx_http_request_t *r,
 }
 
 static time_t
-ngx_http_auth_jwt_get_grant_time(ngx_http_request_t *r, jwt_t *jwt, char *claim)
+ngx_http_auth_jwt_get_grant_time(ngx_http_request_t *r, jwt_t *jwt,
+                                 char *claim, char *delimiter, char *quote)
 {
   time_t val;
 
-  val = (time_t) jwt_get_grant_int(jwt, claim);
+  val = (time_t) ngx_http_auth_jwt_get_grant_int(jwt, claim, delimiter, quote);
   if (val == -1) {
     char *var;
 
-    var = jwt_get_grants_json(jwt, claim);
+    var = ngx_http_auth_jwt_get_grants_json(jwt, claim, delimiter, quote);
     if (var) {
       size_t n;
       u_char *p;
@@ -1650,7 +1652,7 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
     return NGX_OK;
   }
 
-  if (jwt_get_json == jwt_get_grants_json) {
+  if (jwt_get_json == ngx_http_auth_jwt_get_grants_json) {
     requirement_type = "claim";
   }
   else {
@@ -1682,7 +1684,7 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
       value.len -= 5;
     }
 
-    jwt_value = jwt_get_json(ctx->jwt, requirement[i].name);
+    jwt_value = jwt_get_json(ctx->jwt, requirement[i].name, NULL, NULL);
     if (jwt_value == NULL) {
       ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                     "auth_jwt: rejected due to missing %s: %s",
@@ -1714,7 +1716,7 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
       return NGX_ERROR;
     }
 
-    if (jwt_get_json == jwt_get_grants_json) {
+    if (jwt_get_json == ngx_http_auth_jwt_get_grants_json) {
       // NOTE: only claim requirement
       if (ngx_strcmp("nbf", requirement[i].name) == 0) {
         if (json_is_number(expected_json)) {
@@ -1770,7 +1772,7 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
     json_delete(jwt_value_json);
     json_delete(expected_json);
 
-    if (jwt_get_json == jwt_get_headers_json) {
+    if (jwt_get_json == ngx_http_auth_jwt_get_headers_json) {
       // NOTE: only header requirement
       if (ngx_strcmp("alg", requirement[i].name) == 0) {
         // NOTE: allow NONE algorithm when passing alg requirements
@@ -1858,7 +1860,8 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
   if (ngx_http_auth_jwt_validate_requirement(r, cf, ctx,
                                              cf->validate.requirement.claims,
                                              &algorithm,
-                                             jwt_get_grants_json) != NGX_OK) {
+                                             ngx_http_auth_jwt_get_grants_json)
+      != NGX_OK) {
     return NGX_ERROR;
   }
 
@@ -1866,7 +1869,7 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
   if (cf->validate.exp) {
     time_t exp, now;
 
-    exp = ngx_http_auth_jwt_get_grant_time(r, ctx->jwt, "exp");
+    exp = ngx_http_auth_jwt_get_grant_time(r, ctx->jwt, "exp", NULL, NULL);
     if (exp == -1) {
       return NGX_ERROR;
     }
@@ -1888,7 +1891,8 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
   if (ngx_http_auth_jwt_validate_requirement(r, cf, ctx,
                                              cf->validate.requirement.headers,
                                              &algorithm,
-                                             jwt_get_headers_json) != NGX_OK) {
+                                             ngx_http_auth_jwt_get_headers_json)
+      != NGX_OK) {
     return NGX_ERROR;
   }
 
