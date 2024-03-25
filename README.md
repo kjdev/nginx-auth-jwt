@@ -16,7 +16,7 @@ The module can be used for
 [OpenID Connect](http://openid.net/specs/openid-connect-core-1_0.html)
 authentication.
 
-> This modules is heavenly inspired by the nginx original
+> This module is heavily inspired by the nginx original
 > [http_auth_jwt_module](http://nginx.org/en/docs/http/ngx_http_auth_jwt_module.html).
 
 Dependency
@@ -52,7 +52,7 @@ $ : "app.conf: Create nginx configuration"
 $ docker run -p 80:80 -v $PWD/app.conf:/etc/nginx/http.d/default.conf nginx-auth-jwt
 ```
 
-> Github package: ghcr.io/kjdev/nginx-auth-jwt
+> GitHub package: ghcr.io/kjdev/nginx-auth-jwt
 
 Supported Algorithms
 --------------------
@@ -95,6 +95,7 @@ location / {
 - [auth\_jwt\_require](#auth_jwt_require)
 - [auth\_jwt\_require\_claim](#auth_jwt_require_claim)
 - [auth\_jwt\_require\_header](#auth_jwt_require_header)
+- [auth\_jwt\_allow\_nested](#auth_jwt_allow_nested)
 
 <a name="auth_jwt"></a>
 ```
@@ -111,7 +112,7 @@ The optional `token` parameter specifies a variable that contains
 JSON Web Token.
 By default, JWT is passed in the `Authorization` header as a
 [Bearer Token](https://datatracker.ietf.org/doc/html/rfc6750).
-JWT may be also passed as a cookie or a part of a query string:
+JWT may also be passed as a cookie or part of a query string:
 
 > ```
 > auth_jwt "closed site" token=$cookie_auth_token;
@@ -433,6 +434,39 @@ Specifies a requirement for header in jwt token.
 
 All possibilities of this directive are the same as for
 [auth\_jwt\_require\_claim](#auth_jwt_require_claim) above.
+
+<a name="auth_jwt_allow_nested"></a>
+```
+Syntax: auth_jwt_allow_nested [delimiter=string] [quote=string];
+Default: -
+Context: http
+```
+Allow access to nested claim/headers in jwt token.
+
+The optional `delimiter` parameter sets the nesting delimiter
+(default value is `.`).
+
+The optional `quote` parameter sets the quote character for the key
+(default value is `"`).
+
+> Examples:
+> ```
+> auth_jwt_allow_nested;
+> server {
+>   auth_jwt_require_claim grants.access eq allow;
+>   auth_jwt_require_claim '"grants.key"' eq dot;
+> }
+> ```
+>
+> JWT payload:
+> ```
+> {
+>   "grants": {
+>     "access": "allow"
+>   },
+>   "grants.key": "dot"
+> }
+> ```
 
 ### Embedded Variables
 
