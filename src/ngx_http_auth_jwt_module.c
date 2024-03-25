@@ -662,7 +662,7 @@ ngx_http_auth_jwt_conf_set_token_variable(ngx_conf_t *cf,
 }
 
 static char *
-ngx_http_auth_jwt_conf_set_valiable(ngx_conf_t *cf,
+ngx_http_auth_jwt_conf_set_variable(ngx_conf_t *cf,
                                     ngx_command_t *cmd, void *conf,
                                     const char *prefix,
                                     ngx_http_get_variable_pt get_handler)
@@ -719,7 +719,7 @@ ngx_http_auth_jwt_conf_set_claim(ngx_conf_t *cf,
                                  ngx_command_t *cmd, void *conf)
 {
   return
-    ngx_http_auth_jwt_conf_set_valiable(cf, cmd, conf,
+    ngx_http_auth_jwt_conf_set_variable(cf, cmd, conf,
                                         NGX_HTTP_AUTH_JWT_CLAIM_VAR_PREFIX,
                                         ngx_http_auth_jwt_variable_claim);
 }
@@ -729,7 +729,7 @@ ngx_http_auth_jwt_conf_set_header(ngx_conf_t *cf,
                                   ngx_command_t *cmd, void *conf)
 {
   return
-    ngx_http_auth_jwt_conf_set_valiable(cf, cmd, conf,
+    ngx_http_auth_jwt_conf_set_variable(cf, cmd, conf,
                                         NGX_HTTP_AUTH_JWT_HEADER_VAR_PREFIX,
                                         ngx_http_auth_jwt_variable_header);
 }
