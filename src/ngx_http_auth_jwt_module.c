@@ -25,6 +25,7 @@ static char *ngx_http_auth_jwt_conf_set_key_request(ngx_conf_t *cf, ngx_command_
 static char *ngx_http_auth_jwt_conf_set_revocation(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static char * ngx_http_auth_jwt_conf_set_requirement(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static char *ngx_http_auth_jwt_conf_set_require_variable(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+static char *ngx_http_auth_jwt_conf_set_allow_nested(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
 static ngx_int_t ngx_http_auth_jwt_pre_conf(ngx_conf_t *cf);
 static ngx_int_t ngx_http_auth_jwt_post_conf(ngx_conf_t *cf);
@@ -65,6 +66,10 @@ typedef struct {
       ngx_array_t *values;
     } variable;
   } validate;
+  struct {
+    char *delimiter;
+    char *quote;
+  } nested;
 } ngx_http_auth_jwt_loc_conf_t;
 
 typedef struct {
@@ -232,6 +237,12 @@ static ngx_command_t ngx_http_auth_jwt_commands[] = {
     ngx_conf_set_flag_slot,
     NGX_HTTP_LOC_CONF_OFFSET,
     offsetof(ngx_http_auth_jwt_loc_conf_t, validate.sig),
+    NULL },
+  { ngx_string("auth_jwt_allow_nested"),
+    NGX_HTTP_MAIN_CONF|NGX_CONF_NOARGS|NGX_CONF_TAKE1|NGX_CONF_TAKE2,
+    ngx_http_auth_jwt_conf_set_allow_nested,
+    NGX_HTTP_LOC_CONF_OFFSET,
+    0,
     NULL },
   ngx_null_command
 };
@@ -470,11 +481,18 @@ ngx_http_auth_jwt_variable_find(ngx_http_request_t *r,
   size_t len, prefix_len;
   u_char *data, *key = NULL, *var;
   ngx_http_auth_jwt_ctx_t *ctx;
+  ngx_http_auth_jwt_loc_conf_t *cf;
   auth_jwt_get jwt_get;
   auth_jwt_get_json jwt_get_json;
 
   ctx = ngx_http_get_module_ctx(r, ngx_http_auth_jwt_module);
   if (!ctx || !ctx->jwt) {
+    v->not_found = 1;
+    return NGX_OK;
+  }
+
+  cf = ngx_http_get_module_loc_conf(r, ngx_http_auth_jwt_module);
+  if (!cf) {
     v->not_found = 1;
     return NGX_OK;
   }
@@ -515,11 +533,13 @@ ngx_http_auth_jwt_variable_find(ngx_http_request_t *r,
     ngx_memcpy(key, var, len);
   }
 
-  value = (*jwt_get)(ctx->jwt, (char *) key, NULL, NULL);
+  value = (*jwt_get)(ctx->jwt, (char *) key,
+                     cf->nested.delimiter, cf->nested.quote);
   if (value == NULL) {
     size_t i, t;
 
-    str = (*jwt_get_json)(ctx->jwt, (char *) key, NULL, NULL);
+    str = (*jwt_get_json)(ctx->jwt, (char *) key,
+                          cf->nested.delimiter, cf->nested.quote);
     if (str == NULL) {
       v->not_found = 1;
       return NGX_OK;
@@ -1060,6 +1080,53 @@ ngx_http_auth_jwt_conf_set_key_request(ngx_conf_t *cf,
   return NGX_CONF_OK;
 }
 
+static char *
+ngx_http_auth_jwt_conf_set_allow_nested(ngx_conf_t *cf,
+                                        ngx_command_t *cmd, void *conf)
+{
+  ngx_uint_t i;
+  ngx_http_auth_jwt_loc_conf_t *lcf;
+  ngx_str_t *value;
+
+  lcf = conf;
+  value = cf->args->elts;
+
+  for (i = 1; i < cf->args->nelts; i++) {
+    if (ngx_strncmp(value[i].data, "delimiter=", 10) == 0
+        && value[i].len > 10) {
+      value[i].data += 10;
+      value[i].len -= 10;
+      lcf->nested.delimiter = (char *) ngx_http_auth_jwt_strdup(cf->pool,
+                                                                value[i].data,
+                                                                value[i].len);
+      continue;
+    }
+
+    if (ngx_strncmp(value[i].data, "quote=", 6) == 0 && value[i].len > 6) {
+      value[i].data += 6;
+      value[i].len -= 6;
+      lcf->nested.quote = (char *) ngx_http_auth_jwt_strdup(cf->pool,
+                                                            value[i].data,
+                                                            value[i].len);
+      continue;
+    }
+  }
+
+  if (lcf->nested.delimiter == NULL) {
+    lcf->nested.delimiter = (char *) ngx_http_auth_jwt_strdup(cf->pool,
+                                                              (u_char *) ".",
+                                                              1);
+  }
+
+  if (lcf->nested.quote == NULL) {
+    lcf->nested.quote = (char *) ngx_http_auth_jwt_strdup(cf->pool,
+                                                          (u_char *) "\"",
+                                                          1);
+  }
+
+  return NGX_CONF_OK;
+}
+
 static ngx_int_t
 ngx_http_auth_jwt_pre_conf(ngx_conf_t *cf)
 {
@@ -1126,6 +1193,8 @@ ngx_http_auth_jwt_create_loc_conf(ngx_conf_t *cf)
   conf->validate.variable.values = NULL;
   conf->validate.exp = NGX_CONF_UNSET;
   conf->validate.sig = NGX_CONF_UNSET;
+  conf->nested.delimiter = NULL;
+  conf->nested.quote = NULL;
 
   conf->enabled = NGX_CONF_UNSET;
 
@@ -1299,6 +1368,23 @@ ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
     }
     else {
       conf->key.vars = json_copy(prev->key.vars);
+    }
+  }
+
+  if (conf->nested.delimiter == NULL) {
+    if (prev->nested.delimiter) {
+      conf->nested.delimiter =
+        (char *) ngx_http_auth_jwt_strdup(cf->pool,
+                                          (u_char *) prev->nested.delimiter,
+                                          strlen(prev->nested.delimiter));
+    }
+  }
+  if (conf->nested.quote == NULL) {
+    if (prev->nested.quote) {
+      conf->nested.quote =
+        (char *) ngx_http_auth_jwt_strdup(cf->pool,
+                                          (u_char *) prev->nested.quote,
+                                          strlen(prev->nested.quote));
     }
   }
 
@@ -1684,7 +1770,8 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
       value.len -= 5;
     }
 
-    jwt_value = jwt_get_json(ctx->jwt, requirement[i].name, NULL, NULL);
+    jwt_value = jwt_get_json(ctx->jwt, requirement[i].name,
+                             cf->nested.delimiter, cf->nested.quote);
     if (jwt_value == NULL) {
       ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                     "auth_jwt: rejected due to missing %s: %s",
