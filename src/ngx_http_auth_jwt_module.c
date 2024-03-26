@@ -1110,6 +1110,11 @@ ngx_http_auth_jwt_conf_set_allow_nested(ngx_conf_t *cf,
                                                             value[i].len);
       continue;
     }
+
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                       "\"%V\" invalid parameter \"%V\"",
+                       &cmd->name, &value[i]);
+    return NGX_CONF_ERROR;
   }
 
   if (lcf->nested.delimiter == NULL) {
