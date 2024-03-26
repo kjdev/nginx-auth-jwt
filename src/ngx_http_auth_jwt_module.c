@@ -1813,7 +1813,7 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
     }
 
     json_object_foreach(cf->revocation.subs, revocation_sub, value) {
-      if (strcmp(jwt_sub, revocation_sub) == 0) {
+      if (ngx_strcmp(jwt_sub, revocation_sub) == 0) {
         char *msg = json_dumps(value, JSON_COMPACT);
         ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
                       "auth_jwt: rejected due to sub in revocation list"
@@ -1833,7 +1833,7 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
     const char * revocation_kid;
 
     // note that revocation_kids turn on kid to required header
-    if (kid == NULL || strcmp(kid, "") == 0) {
+    if (kid == NULL || ngx_strcmp(kid, "") == 0) {
       ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
                     "auth_jwt: rejected due to kid cannot be empty"
                     " when revocation_kids set", kid);
@@ -1841,7 +1841,7 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
     }
 
     json_object_foreach(cf->revocation.kids, revocation_kid, value) {
-      if (strcmp(kid, revocation_kid) == 0) {
+      if (ngx_strcmp(kid, revocation_kid) == 0) {
         char *msg = json_dumps(value, JSON_COMPACT);
         ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
                       "auth_jwt: rejected due to kid in revocation list"
