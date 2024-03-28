@@ -239,7 +239,8 @@ static ngx_command_t ngx_http_auth_jwt_commands[] = {
     offsetof(ngx_http_auth_jwt_loc_conf_t, validate.sig),
     NULL },
   { ngx_string("auth_jwt_allow_nested"),
-    NGX_HTTP_MAIN_CONF|NGX_CONF_NOARGS|NGX_CONF_TAKE1|NGX_CONF_TAKE2,
+    NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF
+    |NGX_CONF_NOARGS|NGX_CONF_TAKE1|NGX_CONF_TAKE2,
     ngx_http_auth_jwt_conf_set_allow_nested,
     NGX_HTTP_LOC_CONF_OFFSET,
     0,
