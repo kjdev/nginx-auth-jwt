@@ -439,7 +439,7 @@ All possibilities of this directive are the same as for
 ```
 Syntax: auth_jwt_allow_nested [delimiter=string] [quote=string];
 Default: -
-Context: http
+Context: http, server, location
 ```
 Allow access to nested claim/headers in jwt token.
 
@@ -452,10 +452,8 @@ The optional `quote` parameter sets the quote character for the key
 > Examples:
 > ```
 > auth_jwt_allow_nested;
-> server {
->   auth_jwt_require_claim grants.access eq allow;
->   auth_jwt_require_claim '"grants.key"' eq dot;
-> }
+> auth_jwt_require_claim grants.access eq allow;
+> auth_jwt_require_claim '"grants.key"' eq dot;
 > ```
 >
 > JWT payload:
