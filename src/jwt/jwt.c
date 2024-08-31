@@ -589,7 +589,7 @@ int jwt_parse(jwt_t **jwt, const char *token, unsigned int *len)
 {
 	char *head = NULL;
 	jwt_t *new = NULL;
-	char *body, *sig;
+	char *body, *sig = NULL;
 	int ret = EINVAL;
 
 	if (!jwt)
