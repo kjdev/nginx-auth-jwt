@@ -375,7 +375,9 @@ Specifies a requirement for claim in jwt token.
 >       auth_jwt_require_claim jti eq 3949117906; # string
 >       auth_jwt_require_claim iat eq json=1697461112; # integer
 >       auth_jwt_require iat lt $expected_less_than_iat;
+>       # auth_jwt_require iat lt json=1697461110;
 >       auth_jwt_require_claim roles intersect $required_jwt_roles;
+>       # auth_jwt_require_claim roles intersect json=["SERVICE","ADMINISTRATORS"];
 >     }
 >     ...
 > ```
