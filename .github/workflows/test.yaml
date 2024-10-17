@@ -30,7 +30,7 @@ jobs:
           tar xf nginx-${nginx_version}.tar.gz
           cd nginx-${nginx_version}
           opt=$(nginx -V 2>&1 | tail -1 | sed -e 's/configure arguments://' -e 's| --add-dynamic-module=[^ ]*||g')
-          ./configure ${opt} --add-dynamic-module=../
+          ./configure ${opt} --add-dynamic-module=../ --with-cc-opt='-DNGX_HTTP_HEADERS'
           make
           mkdir -p /usr/lib/nginx/modules
           cp objs/ngx_http_auth_jwt_module.so /usr/lib/nginx/modules/
