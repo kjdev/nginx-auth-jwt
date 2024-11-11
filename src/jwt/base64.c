@@ -82,7 +82,7 @@
 /* Base64 encoder/decoder. Originally Apache file ap_base64.c
  */
 
-/* Originally of https://github.com/benmcollins/libjwt at v1.17.0 */
+/* Originally of https://github.com/benmcollins/libjwt at v1.17.2 */
 
 #include <string.h>
 
@@ -136,7 +136,10 @@ int jwt_Base64decode(char *bufplain, const char *bufcoded)
     nprbytes -= 4;
     }
 
-    /* Note: (nprbytes == 1) would be an error, so just ignore that case */
+    /* Note: (nprbytes == 1) is an error. Normally base64 decoders ignore this,
+     * but we need to alleviate invisible issues in the encoded string. */
+    if (nprbytes == 1)
+        return 0;
     if (nprbytes > 1) {
     *(bufout++) =
         (unsigned char) (pr2six[*bufin] << 2 | pr2six[bufin[1]] >> 4);

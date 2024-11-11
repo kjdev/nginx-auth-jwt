@@ -6,7 +6,7 @@
    License, v. 2.0. If a copy of the MPL was not distributed with this
    file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* Originally of https://github.com/benmcollins/libjwt at v1.17.0 */
+/* Originally of https://github.com/benmcollins/libjwt at v1.17.2 */
 
 #ifndef JWT_PRIVATE_H
 #define JWT_PRIVATE_H

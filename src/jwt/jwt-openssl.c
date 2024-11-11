@@ -6,7 +6,7 @@
    License, v. 2.0. If a copy of the MPL was not distributed with this
    file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* Originally of https://github.com/benmcollins/libjwt at v1.17.0 */
+/* Originally of https://github.com/benmcollins/libjwt at v1.17.2 */
 
 #include <stdlib.h>
 #include <string.h>
@@ -18,9 +18,8 @@
 #include <openssl/buffer.h>
 #include <openssl/pem.h>
 #include <openssl/bn.h>
-#if OPENSSL_VERSION_NUMBER >= 0x30000000L
-#include <openssl/core_names.h>
-#endif
+#include <openssl/rsa.h>
+#include <openssl/opensslv.h>
 
 #include "jwt.h"
 
@@ -156,6 +155,52 @@ jwt_verify_hmac_done:
 
 #define SIGN_ERROR(__err) { ret = __err; goto jwt_sign_sha_pem_done; }
 
+static int jwt_degree_for_key(EVP_PKEY *pkey)
+{
+	int degree = 0;
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+	/* OpenSSL 3.0.0 and later has a new API for this. */
+	char groupNameBuffer[24] = {0};
+	size_t groupNameBufferLen = 0;
+	int curve_nid;
+	EC_GROUP *group;
+
+	if (!EVP_PKEY_get_group_name(pkey, groupNameBuffer, sizeof(groupNameBuffer), &groupNameBufferLen))
+		return -EINVAL;
+
+	groupNameBuffer[groupNameBufferLen] = '\0';
+
+	curve_nid = OBJ_txt2nid(groupNameBuffer);
+	if (curve_nid == NID_undef)
+		return -EINVAL;
+
+	group = EC_GROUP_new_by_curve_name(curve_nid);
+	if (group == NULL)
+		return -ENOMEM;
+
+	/* Get the degree of the curve */
+	degree = EC_GROUP_get_degree(group);
+
+	EC_GROUP_free(group);
+#else
+	EC_KEY *ec_key;
+
+	if (EVP_PKEY_id(pkey) != EVP_PKEY_EC)
+		return -EINVAL;
+
+	/* Get the actual ec_key */
+	ec_key = EVP_PKEY_get1_EC_KEY(pkey);
+	if (ec_key == NULL)
+		return -ENOMEM;
+
+	degree = EC_GROUP_get_degree(EC_KEY_get0_group(ec_key));
+
+	EC_KEY_free(ec_key);
+#endif
+
+	return degree;
+}
+
 int jwt_sign_sha_pem(jwt_t *jwt, char **out, unsigned int *len,
 		     const char *str, unsigned int str_len)
 {
@@ -188,7 +233,6 @@ int jwt_sign_sha_pem(jwt_t *jwt, char **out, unsigned int *len,
 		type = EVP_PKEY_RSA;
 		break;
 
-#ifndef HAVE_OPENSSL
 	/* RSA-PSS */
 	case JWT_ALG_PS256:
 		alg = EVP_sha256();
@@ -205,7 +249,6 @@ int jwt_sign_sha_pem(jwt_t *jwt, char **out, unsigned int *len,
 		type = EVP_PKEY_RSA_PSS;
 		padding = RSA_PKCS1_PSS_PADDING;
 		break;
-#endif
 
 	/* ECC */
 	case JWT_ALG_ES256:
@@ -276,38 +319,13 @@ int jwt_sign_sha_pem(jwt_t *jwt, char **out, unsigned int *len,
 		memcpy(*out, sig, slen);
 		*len = slen;
 	} else {
-		unsigned int degree, bn_len, r_len, s_len, buf_len;
+		unsigned int bn_len, r_len, s_len, buf_len;
 		unsigned char *raw_buf;
 
 		/* For EC we need to convert to a raw format of R/S. */
-
-#if OPENSSL_VERSION_NUMBER >= 0x30000000L
-		char curve_name[64];
-		size_t curve_name_len = 0;
-		EC_GROUP *ecgroup;
-
-		if (!EVP_PKEY_get_utf8_string_param(pkey, OSSL_PKEY_PARAM_GROUP_NAME, curve_name, sizeof(curve_name), &curve_name_len))
-			SIGN_ERROR(ENOMEM);
-
-		ecgroup = EC_GROUP_new_by_curve_name(OBJ_txt2nid(curve_name));
-		if (ecgroup == NULL)
-			SIGN_ERROR(ENOMEM);
-
-		degree = EC_GROUP_get_degree(ecgroup);
-
-		EC_GROUP_free(ecgroup);
-#else
-		EC_KEY *ec_key;
-
-		/* Get the actual ec_key */
-		ec_key = EVP_PKEY_get1_EC_KEY(pkey);
-		if (ec_key == NULL)
-			SIGN_ERROR(ENOMEM);
-
-		degree = EC_GROUP_get_degree(EC_KEY_get0_group(ec_key));
-
-		EC_KEY_free(ec_key);
-#endif
+		int degree = jwt_degree_for_key(pkey);
+		if (degree < 0)
+			SIGN_ERROR(-degree);
 
 		/* Get the sig from the DER encoded version. */
 		ec_sig = d2i_ECDSA_SIG(NULL, (const unsigned char **)&sig, slen);
@@ -385,7 +403,6 @@ int jwt_verify_sha_pem(jwt_t *jwt, const char *head, unsigned int head_len, cons
 		type = EVP_PKEY_RSA;
 		break;
 
-#ifndef HAVE_OPENSSL
 	/* RSA-PSS */
 	case JWT_ALG_PS256:
 		alg = EVP_sha256();
@@ -402,7 +419,6 @@ int jwt_verify_sha_pem(jwt_t *jwt, const char *head, unsigned int head_len, cons
 		type = EVP_PKEY_RSA_PSS;
 		padding = RSA_PKCS1_PSS_PADDING;
 		break;
-#endif
 
 	/* ECC */
 	case JWT_ALG_ES256:
@@ -443,43 +459,20 @@ int jwt_verify_sha_pem(jwt_t *jwt, const char *head, unsigned int head_len, cons
 
 	/* Convert EC sigs back to ASN1. */
 	if (pkey_type == EVP_PKEY_EC) {
-		unsigned int degree, bn_len;
+		unsigned int bn_len;
+		int degree;
 		unsigned char *p;
 
 		ec_sig = ECDSA_SIG_new();
 		if (ec_sig == NULL)
 			VERIFY_ERROR(ENOMEM);
 
-#if OPENSSL_VERSION_NUMBER >= 0x30000000L
-		char *curve_name[64];
-		size_t curve_name_len = 0;
-		EC_GROUP *ecgroup;
-
-		if (!EVP_PKEY_get_utf8_string_param(pkey, OSSL_PKEY_PARAM_GROUP_NAME, (char *)curve_name, sizeof(curve_name), &curve_name_len))
-			VERIFY_ERROR(ENOMEM);
-
-		ecgroup = EC_GROUP_new_by_curve_name(OBJ_txt2nid((char *)curve_name));
-		if (ecgroup == NULL)
-			VERIFY_ERROR(ENOMEM);
-
-		degree = EC_GROUP_get_degree(ecgroup);
-
-		EC_GROUP_free(ecgroup);
-#else
-		EC_KEY *ec_key;
-
-		/* Get the actual ec_key */
-		ec_key = EVP_PKEY_get1_EC_KEY(pkey);
-		if (ec_key == NULL)
-			VERIFY_ERROR(ENOMEM);
-
-		degree = EC_GROUP_get_degree(EC_KEY_get0_group(ec_key));
-
-		EC_KEY_free(ec_key);
-#endif
+		degree = jwt_degree_for_key(pkey);
+		if (degree < 0)
+			VERIFY_ERROR(-degree);
 
 		bn_len = (degree + 7) / 8;
-		if ((bn_len * 2) != (unsigned int)slen)
+		if ((int) (bn_len * 2) != slen)
 			VERIFY_ERROR(EINVAL);
 
 		ec_sig_r = BN_bin2bn(sig, bn_len, NULL);

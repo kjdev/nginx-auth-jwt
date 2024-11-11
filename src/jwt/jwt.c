@@ -6,7 +6,7 @@
    License, v. 2.0. If a copy of the MPL was not distributed with this
    file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* Originally of https://github.com/benmcollins/libjwt at v1.17.0 */
+/* Originally of https://github.com/benmcollins/libjwt at v1.17.2 */
 
 #include <stdlib.h>
 #include <string.h>
@@ -132,14 +132,12 @@ const char *jwt_alg_str(jwt_alg_t alg)
 		return "ES384";
 	case JWT_ALG_ES512:
 		return "ES512";
-#ifndef HAVE_OPENSSL
 	case JWT_ALG_PS256:
 		return "PS256";
 	case JWT_ALG_PS384:
 		return "PS384";
 	case JWT_ALG_PS512:
 		return "PS512";
-#endif
 	default:
 		return NULL;
 	}
@@ -170,14 +168,12 @@ jwt_alg_t jwt_str_alg(const char *alg)
 		return JWT_ALG_ES384;
 	else if (!strcmp(alg, "ES512"))
 		return JWT_ALG_ES512;
-#ifndef HAVE_OPENSSL
 	else if (!strcmp(alg, "PS256"))
 		return JWT_ALG_PS256;
 	else if (!strcmp(alg, "PS384"))
 		return JWT_ALG_PS384;
 	else if (!strcmp(alg, "PS512"))
 		return JWT_ALG_PS512;
-#endif
 
 	return JWT_ALG_INVAL;
 }
@@ -417,6 +413,11 @@ void *jwt_b64_decode(const char *src, int *ret_len)
 
 	*ret_len = jwt_Base64decode(buf, new);
 
+	if (*ret_len == 0) {
+		jwt_freemem(buf);
+		buf = NULL;
+	}
+
 	return buf;
 }
 
@@ -479,7 +480,8 @@ static int jwt_sign(jwt_t *jwt, char **out, unsigned int *len, const char *str, 
 	case JWT_ALG_RS512:
 
 #ifndef HAVE_OPENSSL
-	/* PS */
+	/* XXX These do not work right now on OpenSSL */
+	/* RSA-PSS */
 	case JWT_ALG_PS256:
 	case JWT_ALG_PS384:
 	case JWT_ALG_PS512:
@@ -512,7 +514,8 @@ static int jwt_verify(jwt_t *jwt, const char *head, unsigned int head_len, const
 	case JWT_ALG_RS512:
 
 #ifndef HAVE_OPENSSL
-	/* PS */
+	/* XXX These do not work right now on OpenSSL */
+	/* RSA-PSS */
 	case JWT_ALG_PS256:
 	case JWT_ALG_PS384:
 	case JWT_ALG_PS512:
@@ -589,7 +592,7 @@ int jwt_parse(jwt_t **jwt, const char *token, unsigned int *len)
 {
 	char *head = NULL;
 	jwt_t *new = NULL;
-	char *body, *sig;
+	char *body, *sig = NULL;
 	int ret = EINVAL;
 
 	if (!jwt)
@@ -1095,6 +1098,25 @@ static int jwt_dump(jwt_t *jwt, char **buf, int pretty)
 		ret = jwt_write_body(jwt, buf, pretty);
 
 	return ret;
+}
+
+char *jwt_dump_grants_str(jwt_t *jwt, int pretty)
+{
+	char *out = NULL;
+	int err;
+
+	errno = 0;
+
+	err = jwt_write_body(jwt, &out, pretty);
+
+	if (err) {
+		errno = err;
+		if (out)
+			jwt_freemem(out);
+		out = NULL;
+	}
+
+	return out;
 }
 
 int jwt_dump_fp(jwt_t *jwt, FILE *fp, int pretty)
@@ -1610,6 +1632,7 @@ static jwt_exception_dict_t jwt_exceptions[] = {
 char *jwt_exception_str(unsigned int exceptions)
 {
 	int rc;
+	size_t i;
 	char *str = NULL;
 
 	if (exceptions == JWT_VALIDATION_SUCCESS) {
@@ -1618,7 +1641,7 @@ char *jwt_exception_str(unsigned int exceptions)
 		return str;
 	}
 
-	for (size_t i = 0; i < ARRAY_SIZE(jwt_exceptions); i++) {
+	for (i = 0; i < ARRAY_SIZE(jwt_exceptions); i++) {
 		if (!(jwt_exceptions[i].error & exceptions))
 			continue;
 
