@@ -1,10 +1,11 @@
+# syntax=docker/dockerfile:1
 
 ARG ALPINE_VERSION=3.19
 
-FROM alpine:${ALPINE_VERSION} as nginx
+FROM alpine:${ALPINE_VERSION} AS nginx
 
 ### builder ###
-FROM nginx as builder
+FROM nginx AS builder
 
 WORKDIR /build
 RUN apk --no-cache upgrade \

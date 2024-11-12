@@ -1,8 +1,9 @@
+# syntax=docker/dockerfile:1
 
 ARG ALPINE_VERSION=3.19
 
-FROM ghcr.io/kjdev/nginx-auth-jwt as auth-jwt
-FROM ghcr.io/kjdev/nginx-keyval as keyval
+FROM ghcr.io/kjdev/nginx-auth-jwt AS auth-jwt
+FROM ghcr.io/kjdev/nginx-keyval AS keyval
 
 ### nginx ###
 FROM alpine:${ALPINE_VERSION} as nginx
