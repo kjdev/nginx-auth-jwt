@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-ARG ALPINE_VERSION=3.19
+ARG ALPINE_VERSION=3.20
 
 FROM alpine:${ALPINE_VERSION} AS nginx
 
@@ -37,6 +37,7 @@ RUN nginx_opt=$(nginx -V 2>&1 | tail -1 | sed -e "s/configure arguments://" -e "
  && ./configure \
       ${nginx_opt} \
       --add-dynamic-module=../ \
+      --with-cc-opt='-DNGX_HTTP_HEADERS' \
  && make \
  && mkdir -p /usr/lib/nginx/modules \
  && cp objs/ngx_http_auth_jwt_module.so /usr/lib/nginx/modules/ \
