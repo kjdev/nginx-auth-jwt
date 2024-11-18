@@ -38,6 +38,8 @@ static ngx_int_t ngx_http_auth_jwt_preaccess_handler(ngx_http_request_t *r);
 static ngx_int_t ngx_http_auth_jwt_access_handler(ngx_http_request_t *r);
 static ngx_int_t ngx_http_auth_jwt_handler(ngx_http_request_t *r, ngx_int_t phase);
 
+static void ngx_http_auth_jwt_cleanup(void *data);
+
 typedef struct {
   ngx_int_t token_variable;
   ngx_array_t *set_vars;
@@ -465,6 +467,30 @@ ngx_http_auth_jwt_key_get(const json_t *object, const char *kid)
   return json_string_value(var);
 }
 
+static ngx_http_auth_jwt_ctx_t *
+ngx_http_auth_jwt_get_module_ctx(ngx_http_request_t *r)
+{
+  ngx_pool_cleanup_t *cln;
+  ngx_http_auth_jwt_ctx_t *ctx;
+
+  ctx = ngx_http_get_module_ctx(r, ngx_http_auth_jwt_module);
+
+  if (ctx == NULL && (r->internal || r->filter_finalize)) {
+    /*
+     * if module context was reset, the original address
+     * can still be found in the cleanup handler
+     */
+    for (cln = r->pool->cleanup; cln; cln = cln->next) {
+      if (cln->handler == ngx_http_auth_jwt_cleanup) {
+        ctx = cln->data;
+        break;
+      }
+    }
+  }
+
+  return ctx;
+}
+
 typedef enum {
   NGX_HTTP_AUTH_JWT_VARIABLE_HEADER = 0,
   NGX_HTTP_AUTH_JWT_VARIABLE_CLAIM,
@@ -486,7 +512,7 @@ ngx_http_auth_jwt_variable_find(ngx_http_request_t *r,
   auth_jwt_get jwt_get;
   auth_jwt_get_json jwt_get_json;
 
-  ctx = ngx_http_get_module_ctx(r, ngx_http_auth_jwt_module);
+  ctx = ngx_http_auth_jwt_get_module_ctx(r);
   if (!ctx || !ctx->jwt) {
     v->not_found = 1;
     return NGX_OK;
@@ -2081,7 +2107,7 @@ ngx_http_auth_jwt_handler(ngx_http_request_t *r, ngx_int_t phase)
     return NGX_DECLINED;
   }
 
-  ctx = ngx_http_get_module_ctx(r, ngx_http_auth_jwt_module);
+  ctx = ngx_http_auth_jwt_get_module_ctx(r);
   if (ctx != NULL) {
     if (ctx->done < ctx->subrequest) {
       return NGX_AGAIN;
