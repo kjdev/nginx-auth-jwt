@@ -102,7 +102,7 @@ location / {
 Syntax: auth_jwt string [token=$variable] | off;
 Default: auth_jwt off;
 Context: server
-Context: http, server, location
+Context: http, server, location, limit_except
 ```
 
 Enables validation of JSON Web Token. The specified string is used as a realm.
@@ -149,7 +149,7 @@ For arrays, the variable keeps a list of array elements separated by commas.
 ```
 Syntax: auth_jwt_key_file file [jwks | keyval];
 Default: -
-Context: http, server, location
+Context: http, server, location, limit_except
 ```
 
 Specifies a file for validating JWT signature.
@@ -174,7 +174,7 @@ Several `auth_jwt_key_file` directives can be specified on the same level.
 ```
 Syntax: auth_jwt_key_request uri [jwks | keyval];
 Default: -
-Context: http, server, location
+Context: http, server, location, limit_except
 ```
 
 Allows retrieving a key from a subrequest for validating JWT signature and
@@ -218,7 +218,7 @@ Several `auth_jwt_key_request` directives can be specified on the same level.
 ```
 Syntax: auth_jwt_validate_exp on | off;
 Default: auth_jwt_validate_exp on;
-Context: http, server, location
+Context: http, server, location, limit_except
 ```
 
 Determines whether to validating the exp JWT claim.
@@ -229,7 +229,7 @@ Determines whether to validating the exp JWT claim.
 ```
 Syntax: auth_jwt_validate_sig on | off;
 Default: auth_jwt_validate_sig on;
-Context: http, server, location
+Context: http, server, location, limit_except
 ```
 
 Determines whether to validating JWT signature.
@@ -263,7 +263,7 @@ Specifies the phase to be processed.
 ```
 Syntax: auth_jwt_revocation_list_sub file;
 Default: -
-Context: http, server, location
+Context: http, server, location, limit_except
 ```
 
 Specifies a file with list of JWT sub claims that deny authentication.
@@ -294,7 +294,7 @@ Every object should have key(jwt sub) and any additional value, if it needed.
 ```
 Syntax: auth_jwt_revocation_list_kid file;
 Default: -
-Context: http, server, location
+Context: http, server, location, limit_except
 ```
 
 Specifies a file with list of JWT kid headers that deny authentication.
@@ -331,7 +331,7 @@ that kid will grow to **REQUIRED**
 ```
 Syntax: auth_jwt_require $value ... [error=401 | 403] ;
 Default: -
-Context: http, server, location
+Context: http, server, location, limit_except
 ```
 
 Specifies additional checks for JWT validation.
@@ -356,7 +356,7 @@ The optional error parameter allows redefining the error code to 403.
 ```
 Syntax: auth_jwt_require_claim claim_name operator $variable | json=string | string;
 Default: -
-Context: http, server, location
+Context: http, server, location, limit_except
 ```
 
 Specifies a requirement for claim in jwt token.
@@ -430,7 +430,7 @@ required json[^json] value.
 ```
 Syntax: auth_jwt_require_header header_name operator $variable;
 Default: -
-Context: http, server, location
+Context: http, server, location, limit_except
 ```
 Specifies a requirement for header in jwt token.
 
