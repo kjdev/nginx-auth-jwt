@@ -120,3 +120,43 @@ location / {
 auth_jwt: failed to json load claim requirement: exp
 --- log_level
 error
+
+=== limit_except
+--- http_config
+include $TEST_NGINX_CONF_DIR/authorized_server.conf;
+map $http_x_id $jwt {
+  "test1" $test1_jwt;
+  "test2" $test2_jwt;
+}
+--- config
+include $TEST_NGINX_CONF_DIR/jwt.conf;
+location / {
+  auth_jwt "" token=$jwt;
+  auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
+  auth_jwt_require_claim iss intersect json=["https://test1.issuer.example.com","https://test2.issuer.example.com"];
+  limit_except GET {
+    auth_jwt_require_claim sub eq "test2.identifier";
+  }
+  include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
+}
+--- request eval
+[
+  "GET /",
+  "GET /",
+  "POST /",
+  "POST /"
+]
+--- more_headers eval
+[
+  "X-Id: test1",
+  "X-Id: test2",
+  "X-Id: test1",
+  "X-Id: test2"
+]
+--- error_code eval
+[
+  200,
+  200,
+  401,
+  200
+]

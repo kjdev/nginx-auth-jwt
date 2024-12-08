@@ -682,3 +682,28 @@ X-Jwt-Claim-Aud:
 X-Jwt-Claim-Email:
 --- error_code: 401
 --- error_log: auth_jwt: rejected due to none algorithm
+
+=== limit_except
+--- http_config
+include $TEST_NGINX_CONF_DIR/authorized_server.conf;
+--- config
+include $TEST_NGINX_CONF_DIR/jwt.conf;
+location / {
+  auth_jwt "" token=$test1_jwt;
+  auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
+  auth_jwt_require_header alg eq HS256;
+  limit_except GET {
+    auth_jwt_require_header alg eq HS384;
+  }
+  include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
+}
+--- request eval
+[
+  "GET /",
+  "POST /"
+]
+--- error_code eval
+[
+  200,
+  401
+]

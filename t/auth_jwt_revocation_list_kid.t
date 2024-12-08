@@ -146,3 +146,43 @@ location / {
 --- error_code: 401
 --- error_log
 auth_jwt: rejected due to kid cannot be empty when revocation_kids set
+
+=== limit_except
+--- http_config
+include $TEST_NGINX_CONF_DIR/authorized_server.conf;
+map $http_x_id $jwt {
+  "test1" $test1_jwt;
+  "test2" $test2_jwt;
+}
+--- config
+include $TEST_NGINX_CONF_DIR/jwt.conf;
+location / {
+  auth_jwt "" token=$jwt;
+  auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
+  auth_jwt_revocation_list_kid $TEST_NGINX_DATA_DIR/revocation_kid_list/empty_revocation_kid_list.json;
+  limit_except GET {
+    auth_jwt_revocation_list_kid $TEST_NGINX_DATA_DIR/revocation_kid_list/revocation_kid_list.json;
+  }
+  include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
+}
+--- request eval
+[
+  "GET /",
+  "GET /",
+  "POST /",
+  "POST /"
+]
+--- more_headers eval
+[
+  "X-Id: test1",
+  "X-Id: test2",
+  "X-Id: test1",
+  "X-Id: test2"
+]
+--- error_code eval
+[
+  200,
+  200,
+  200,
+  401
+]

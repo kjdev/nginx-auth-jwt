@@ -456,3 +456,50 @@ location / {
   auth_jwt_require "iss";
 }
 --- must_die
+
+=== limit_except
+--- http_config
+include $TEST_NGINX_CONF_DIR/authorized_server.conf;
+map $http_x_id $jwt {
+  "test1" $test1_jwt;
+  "test2" $test2_jwt;
+}
+map $jwt_claim_iss $valid_jwt_iss {
+  "https://test1.issuer.example.com" 1;
+  "https://test2.issuer.example.com" 1;
+}
+map $jwt_claim_sub $valid_jwt_sub {
+  "test2.identifier" 1;
+}
+--- config
+include $TEST_NGINX_CONF_DIR/jwt.conf;
+location / {
+  auth_jwt "" token=$jwt;
+  auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
+  auth_jwt_require $valid_jwt_iss;
+  limit_except GET {
+    auth_jwt_require $valid_jwt_sub;
+  }
+  include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
+}
+--- request eval
+[
+  "GET /",
+  "GET /",
+  "POST /",
+  "POST /"
+]
+--- more_headers eval
+[
+  "X-Id: test1",
+  "X-Id: test2",
+  "X-Id: test1",
+  "X-Id: test2"
+]
+--- error_code eval
+[
+  200,
+  200,
+  401,
+  200
+]

@@ -648,3 +648,42 @@ X-Jwt-Claim-Aud: test1.audience.example.com
 X-Jwt-Claim-Email: test1@example.com
 --- error_code: 200
 --- error_log: auth_jwt: rejected due to signature validate failure: kid="test1"
+
+=== limit_except
+--- http_config
+include $TEST_NGINX_CONF_DIR/authorized_server.conf;
+map $http_x_id $jwt {
+  "test1" $test1_jwt;
+  "test2" $test2_jwt;
+}
+--- config
+include $TEST_NGINX_CONF_DIR/jwt.conf;
+location / {
+  auth_jwt "" token=$jwt;
+  auth_jwt_key_file $TEST_NGINX_DATA_DIR/test1.jwks;
+  limit_except GET {
+    auth_jwt_key_file $TEST_NGINX_DATA_DIR/test2.jwks;
+  }
+  include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
+}
+--- request eval
+[
+  "GET /",
+  "GET /",
+  "POST /",
+  "POST /"
+]
+--- more_headers eval
+[
+  "X-Id: test1",
+  "X-Id: test2",
+  "X-Id: test1",
+  "X-Id: test2"
+]
+--- error_code eval
+[
+  200,
+  401,
+  200,
+  200
+]
