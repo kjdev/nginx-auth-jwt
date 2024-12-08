@@ -12,7 +12,7 @@ __DATA__
 include $TEST_NGINX_CONF_DIR/authorized_server.conf;
 --- config
 location / {
-  auth_jwt_revocation_list_kid $TEST_NGINX_DATA_DIR/revocation_kid_list/revocation_kid_list.json;
+  auth_jwt_revocation_list_kid $TEST_NGINX_DATA_DIR/revocation_list_kid/revocation_list_kid.json;
 }
 --- request
     GET /
@@ -23,14 +23,14 @@ location / {
 include $TEST_NGINX_CONF_DIR/authorized_server.conf;
 --- config
 location / {
-  auth_jwt_revocation_list_kid $TEST_NGINX_DATA_DIR/revocation_kid_list/invalid_revocation_kid_list.json;
+  auth_jwt_revocation_list_kid $TEST_NGINX_DATA_DIR/revocation_list_kid/invalid_revocation_list_kid.json;
 }
 --- must_die
 
 === test: set valid auth_jwt_revocation_list_kid in http_config part
 --- http_config
 include $TEST_NGINX_CONF_DIR/authorized_server.conf;
-auth_jwt_revocation_list_kid $TEST_NGINX_DATA_DIR/revocation_kid_list/revocation_kid_list.json;
+auth_jwt_revocation_list_kid $TEST_NGINX_DATA_DIR/revocation_list_kid/revocation_list_kid.json;
 --- config
 location / {}
 --- request
@@ -40,7 +40,7 @@ location / {}
 === test: set invalid auth_jwt_revocation_list_kid in http_config part
 --- http_config
 include $TEST_NGINX_CONF_DIR/authorized_server.conf;
-auth_jwt_revocation_list_kid $TEST_NGINX_DATA_DIR/revocation_kid_list/invalid_revocation_kid_list.json;
+auth_jwt_revocation_list_kid $TEST_NGINX_DATA_DIR/revocation_list_kid/invalid_revocation_list_kid.json;
 --- config
 location / {}
 --- must_die
@@ -48,7 +48,7 @@ location / {}
 === test: set invalid json data auth_jwt_revocation_list_kid failed
 --- http_config
 include $TEST_NGINX_CONF_DIR/authorized_server.conf;
-auth_jwt_revocation_list_kid $TEST_NGINX_DATA_DIR/revocation_kid_list/invalid_json_revocation_kid_list.json;
+auth_jwt_revocation_list_kid $TEST_NGINX_DATA_DIR/revocation_list_kid/invalid_json_revocation_list_kid.json;
 --- config
 location / {}
 --- must_die
@@ -56,8 +56,8 @@ location / {}
 === test: multiple auth_jwt_revocation_list_kid directives success
 --- http_config
 include $TEST_NGINX_CONF_DIR/authorized_server.conf;
-auth_jwt_revocation_list_kid $TEST_NGINX_DATA_DIR/revocation_kid_list/revocation_kid_list.json;
-auth_jwt_revocation_list_kid $TEST_NGINX_DATA_DIR/revocation_kid_list/revocation_kid_list.json;
+auth_jwt_revocation_list_kid $TEST_NGINX_DATA_DIR/revocation_list_kid/revocation_list_kid.json;
+auth_jwt_revocation_list_kid $TEST_NGINX_DATA_DIR/revocation_list_kid/revocation_list_kid.json;
 --- config
 location / {}
 --- request
@@ -93,7 +93,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test1_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_revocation_list_kid $TEST_NGINX_DATA_DIR/revocation_kid_list/revocation_kid_list.json;
+  auth_jwt_revocation_list_kid $TEST_NGINX_DATA_DIR/revocation_list_kid/revocation_list_kid.json;
 }
 --- request
     GET /
@@ -107,7 +107,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test2_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_revocation_list_kid $TEST_NGINX_DATA_DIR/revocation_kid_list/revocation_kid_list.json;
+  auth_jwt_revocation_list_kid $TEST_NGINX_DATA_DIR/revocation_list_kid/revocation_list_kid.json;
 }
 --- request
     GET /
@@ -123,7 +123,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test1_jwt_empty_kid;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_revocation_list_kid $TEST_NGINX_DATA_DIR/revocation_kid_list/revocation_kid_list.json;
+  auth_jwt_revocation_list_kid $TEST_NGINX_DATA_DIR/revocation_list_kid/revocation_list_kid.json;
 }
 --- request
     GET /
@@ -139,7 +139,7 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test1_jwt_unrepresented_kid;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_revocation_list_kid $TEST_NGINX_DATA_DIR/revocation_kid_list/revocation_kid_list.json;
+  auth_jwt_revocation_list_kid $TEST_NGINX_DATA_DIR/revocation_list_kid/revocation_list_kid.json;
 }
 --- request
     GET /
@@ -159,9 +159,9 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_revocation_list_kid $TEST_NGINX_DATA_DIR/revocation_kid_list/empty_revocation_kid_list.json;
+  auth_jwt_revocation_list_kid $TEST_NGINX_DATA_DIR/revocation_list_kid/empty_revocation_list_kid.json;
   limit_except GET {
-    auth_jwt_revocation_list_kid $TEST_NGINX_DATA_DIR/revocation_kid_list/revocation_kid_list.json;
+    auth_jwt_revocation_list_kid $TEST_NGINX_DATA_DIR/revocation_list_kid/revocation_list_kid.json;
   }
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }
