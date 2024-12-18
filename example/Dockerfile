@@ -1,4 +1,5 @@
 # syntax=docker/dockerfile:1
+# check=skip=SecretsUsedInArgOrEnv
 
 ARG ALPINE_VERSION=3.21
 
@@ -6,7 +7,7 @@ FROM ghcr.io/kjdev/nginx-auth-jwt/nginx AS auth-jwt
 FROM ghcr.io/kjdev/nginx-keyval/nginx AS keyval
 
 ### nginx ###
-FROM alpine:${ALPINE_VERSION} as nginx
+FROM alpine:${ALPINE_VERSION} AS nginx
 
 RUN apk --no-cache upgrade \
  && apk --no-cache add \
@@ -22,7 +23,7 @@ RUN apk --no-cache upgrade \
  && rm -f /etc/nginx/http.d/default.conf \
  && mkdir -p /etc/nginx/conf.d \
  && mkdir -p /var/cache/nginx \
- && chown -R nginx. /etc/nginx/conf.d /etc/nginx/http.d /var/cache/nginx
+ && chown -R nginx:nginx /etc/nginx/conf.d /etc/nginx/http.d /var/cache/nginx
 
 COPY --from=auth-jwt /usr/lib/nginx/modules/ngx_http_auth_jwt_module.so /usr/lib/nginx/modules/
 COPY --from=auth-jwt /etc/nginx/modules/auth_jwt.conf /etc/nginx/modules/
