@@ -52,7 +52,7 @@ $ : "app.conf: Create nginx configuration"
 $ docker run -p 80:80 -v $PWD/app.conf:/etc/nginx/http.d/default.conf nginx-auth-jwt
 ```
 
-> GitHub package: ghcr.io/kjdev/nginx-auth-jwt
+> GitHub package: ghcr.io/kjdev/nginx-auth-jwt/nginx
 
 Supported Algorithms
 --------------------
