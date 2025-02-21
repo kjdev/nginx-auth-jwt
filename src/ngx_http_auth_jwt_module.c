@@ -1519,6 +1519,7 @@ ngx_http_auth_jwt_set_bearer_header(ngx_http_request_t *r,
   }
 
   r->headers_out.www_authenticate->hash = 1;
+  r->headers_out.www_authenticate->next = NULL;
   ngx_str_set(&r->headers_out.www_authenticate->key, "WWW-Authenticate");
   r->headers_out.www_authenticate->value.data = bearer;
   r->headers_out.www_authenticate->value.len = len;
