@@ -96,6 +96,7 @@ location / {
 - [auth\_jwt\_require\_claim](#auth_jwt_require_claim)
 - [auth\_jwt\_require\_header](#auth_jwt_require_header)
 - [auth\_jwt\_allow\_nested](#auth_jwt_allow_nested)
+- [auth\_jwt\_allow\_failed](#auth_jwt_allow_failed)
 
 <a name="auth_jwt"></a>
 ```
@@ -468,6 +469,47 @@ The optional `quote` parameter sets the quote character for the key
 > }
 > ```
 
+<a name="auth_jwt_allow_failed"></a>
+```
+Syntax: auth_jwt_allow_failed on | off;
+Default: auth_jwt_allow_failed off;
+Context: http, server, location, limit_except
+```
+
+When enabled, JWT validation failures will not block the request.
+Instead, the request continues and the validation result is available
+via `$jwt_status` and `$jwt_status_code` variables.
+
+This allows custom handling of authentication failures using `if` directives
+or passing the status to backend services.
+
+> Examples:
+> ```
+> location /api/ {
+>     auth_jwt "API";
+>     auth_jwt_key_file /etc/nginx/keys.jwks;
+>     auth_jwt_allow_failed on;
+>
+>     # Custom handling based on JWT status
+>     if ($jwt_status != "ok") {
+>         return 401 "JWT validation failed: $jwt_status";
+>     }
+>
+>     proxy_pass http://backend;
+> }
+>
+> location /mixed/ {
+>     auth_jwt "Mixed";
+>     auth_jwt_key_file /etc/nginx/keys.jwks;
+>     auth_jwt_allow_failed on;
+>
+>     # Pass JWT status to backend
+>     proxy_set_header X-JWT-Status $jwt_status;
+>     proxy_set_header X-JWT-Status-Code $jwt_status_code;
+>     proxy_pass http://backend;
+> }
+> ```
+
 ### Embedded Variables
 
 The module supports embedded variables:
@@ -496,6 +538,33 @@ $jwt_nowtime
 ```
 
 Returns the value of now timestamp.
+
+```
+$jwt_status
+```
+
+Returns the JWT validation status as a string. Possible values:
+- `ok` - JWT validation successful
+- `bypass` - JWT validation bypassed
+- `no_token` - No JWT token provided
+- `invalid_token` - JWT token could not be parsed
+- `expired` - JWT token has expired
+- `not_yet_valid` - JWT token is not yet valid (nbf claim)
+- `revoked_sub` - JWT subject is in revocation list
+- `revoked_kid` - JWT key ID is in revocation list
+- `claim_required` - Required claim is missing or invalid
+- `header_required` - Required header is missing or invalid
+- `var_required` - Required variable validation failed
+- `sig_invalid` - JWT signature validation failed
+- `no_key` - No signing key available for validation
+- `alg_none` - Algorithm "none" is not allowed
+- `error` - Internal error occurred
+
+```
+$jwt_status_code
+```
+
+Returns the HTTP status code corresponding to the JWT validation result (e.g., `200`, `401`, `500`).
 
 Example
 -------
