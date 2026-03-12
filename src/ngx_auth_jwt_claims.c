@@ -2,7 +2,6 @@
 #include <jansson.h>
 #include <string.h>
 #include "ngx_auth_jwt_claims.h"
-#include "jwt/jwt-private.h"
 
 static json_t *
 get_js_json(const json_t *js, const char *key,
@@ -145,7 +144,7 @@ static int
 get_js_bool(const json_t *js, const char *key,
             const char *delim, const char *quote)
 {
-  int val = -1;
+  int val = 0;
   json_t *js_val = NULL;
 
   if (!key || !strlen(key)) {
@@ -168,19 +167,16 @@ get_js_bool(const json_t *js, const char *key,
       break;
     default:
       errno = EINVAL;
+      val = 0;
   }
 
   return val;
 }
 
 const char *
-ngx_auth_jwt_claims_get_header(jwt_t *jwt, const char *header,
+ngx_auth_jwt_claims_get_header(ngx_auth_jwt_t *jwt, const char *header,
                                const char *delim, const char *quote)
 {
-  if (delim == NULL) {
-    return jwt_get_header(jwt, header);
-  }
-
   if (!jwt) {
     errno = EINVAL;
     return NULL;
@@ -192,13 +188,9 @@ ngx_auth_jwt_claims_get_header(jwt_t *jwt, const char *header,
 }
 
 long
-ngx_auth_jwt_claims_get_header_int(jwt_t *jwt, const char *header,
+ngx_auth_jwt_claims_get_header_int(ngx_auth_jwt_t *jwt, const char *header,
                                    const char *delim, const char *quote)
 {
-  if (delim == NULL) {
-    return jwt_get_header_int(jwt, header);
-  }
-
   if (!jwt) {
     errno = EINVAL;
     return 0;
@@ -210,13 +202,9 @@ ngx_auth_jwt_claims_get_header_int(jwt_t *jwt, const char *header,
 }
 
 int
-ngx_auth_jwt_claims_get_header_bool(jwt_t *jwt, const char *header,
+ngx_auth_jwt_claims_get_header_bool(ngx_auth_jwt_t *jwt, const char *header,
                                     const char *delim, const char *quote)
 {
-  if (delim == NULL) {
-    return jwt_get_header_bool(jwt, header);
-  }
-
   if (!jwt) {
     errno = EINVAL;
     return 0;
@@ -228,14 +216,10 @@ ngx_auth_jwt_claims_get_header_bool(jwt_t *jwt, const char *header,
 }
 
 char *
-ngx_auth_jwt_claims_get_headers_json(jwt_t *jwt, const char *header,
+ngx_auth_jwt_claims_get_headers_json(ngx_auth_jwt_t *jwt, const char *header,
                                      const char *delim, const char *quote)
 {
   json_t *js_val = NULL;
-
-  if (delim == NULL) {
-    return jwt_get_headers_json(jwt, header);
-  }
 
   if (!jwt) {
     errno = EINVAL;
@@ -254,13 +238,9 @@ ngx_auth_jwt_claims_get_headers_json(jwt_t *jwt, const char *header,
 }
 
 const char *
-ngx_auth_jwt_claims_get_grant(jwt_t *jwt, const char *grant,
+ngx_auth_jwt_claims_get_grant(ngx_auth_jwt_t *jwt, const char *grant,
                               const char *delim, const char *quote)
 {
-  if (delim == NULL) {
-    return jwt_get_grant(jwt, grant);
-  }
-
   if (!jwt) {
     errno = EINVAL;
     return NULL;
@@ -268,17 +248,13 @@ ngx_auth_jwt_claims_get_grant(jwt_t *jwt, const char *grant,
 
   errno = 0;
 
-  return get_js_string(jwt->grants, grant, delim, quote);
+  return get_js_string(jwt->payload, grant, delim, quote);
 }
 
 long
-ngx_auth_jwt_claims_get_grant_int(jwt_t *jwt, const char *grant,
+ngx_auth_jwt_claims_get_grant_int(ngx_auth_jwt_t *jwt, const char *grant,
                                   const char *delim, const char *quote)
 {
-  if (delim == NULL) {
-    return jwt_get_grant_int(jwt, grant);
-  }
-
   if (!jwt) {
     errno = EINVAL;
     return 0;
@@ -286,17 +262,13 @@ ngx_auth_jwt_claims_get_grant_int(jwt_t *jwt, const char *grant,
 
   errno = 0;
 
-  return get_js_int(jwt->grants, grant, delim, quote);
+  return get_js_int(jwt->payload, grant, delim, quote);
 }
 
 int
-ngx_auth_jwt_claims_get_grant_bool(jwt_t *jwt, const char *grant,
+ngx_auth_jwt_claims_get_grant_bool(ngx_auth_jwt_t *jwt, const char *grant,
                                    const char *delim, const char *quote)
 {
-  if (delim == NULL) {
-    return jwt_get_grant_bool(jwt, grant);
-  }
-
   if (!jwt) {
     errno = EINVAL;
     return 0;
@@ -304,25 +276,21 @@ ngx_auth_jwt_claims_get_grant_bool(jwt_t *jwt, const char *grant,
 
   errno = 0;
 
-  return get_js_bool(jwt->grants, grant, delim, quote);
+  return get_js_bool(jwt->payload, grant, delim, quote);
 }
 
 char *
-ngx_auth_jwt_claims_get_grants_json(jwt_t *jwt, const char *grant,
+ngx_auth_jwt_claims_get_grants_json(ngx_auth_jwt_t *jwt, const char *grant,
                                     const char *delim, const char *quote)
 {
   json_t *js_val = NULL;
 
-  if (delim == NULL) {
-    return jwt_get_grants_json(jwt, grant);
-  }
-
   if (!jwt) {
     errno = EINVAL;
     return NULL;
   }
 
-  js_val = get_js_json(jwt->grants, grant, delim, quote);
+  js_val = get_js_json(jwt->payload, grant, delim, quote);
   if (js_val == NULL) {
     errno = ENOENT;
     return NULL;

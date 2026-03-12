@@ -7,8 +7,6 @@ extern "C" {
 
 #include <jansson.h>
 #include <ngx_core.h>
-#include "jwt/jwt.h"
-#include "jwt/jwt-private.h"
 
 #define NGX_AUTH_JWT_OPERATOR_EQ "eq"
 #define NGX_AUTH_JWT_OPERATOR_NE "ne"

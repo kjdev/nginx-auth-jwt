@@ -3,8 +3,7 @@
 #include <ngx_core.h>
 #include <ngx_http.h>
 
-#include "jwt/jwt.h"
-#include "jwt/jwt-private.h"
+#include "ngx_auth_jwt_decode.h"
 #include "ngx_auth_jwt_jwk.h"
 #include "ngx_auth_jwt_claims.h"
 #include "ngx_auth_jwt_operator.h"
@@ -86,7 +85,7 @@ typedef struct {
   ngx_flag_t verified;
   u_char *token;
   unsigned int payload_len;
-  jwt_t *jwt;
+  ngx_auth_jwt_t *jwt;
   json_t *keys;
   ngx_int_t status;
 } ngx_http_auth_jwt_ctx_t;
@@ -104,8 +103,8 @@ typedef struct {
   ngx_http_auth_jwt_ctx_t *ctx;
 } ngx_http_auth_jwt_key_request_t;
 
-typedef const char *(*auth_jwt_get)(jwt_t *jwt, const char *key, const char *delim, const char *quote);
-typedef char *(*auth_jwt_get_json)(jwt_t *jwt, const char *key, const char *delim, const char *quote);
+typedef const char *(*auth_jwt_get)(ngx_auth_jwt_t *jwt, const char *key, const char *delim, const char *quote);
+typedef char *(*auth_jwt_get_json)(ngx_auth_jwt_t *jwt, const char *key, const char *delim, const char *quote);
 
 static ngx_conf_enum_t ngx_http_auth_jwt_phases[] = {
   { ngx_string("PREACCESS"), NGX_HTTP_PREACCESS_PHASE },
@@ -1476,7 +1475,7 @@ ngx_http_auth_jwt_cleanup(void *data)
   }
 
   if (ctx->jwt) {
-    jwt_free(ctx->jwt);
+    ngx_auth_jwt_free(ctx->jwt);
   }
 
   if (ctx->keys) {
@@ -1691,7 +1690,7 @@ ngx_http_auth_jwt_load_keys(ngx_http_request_t *r,
 }
 
 static time_t
-ngx_http_auth_jwt_get_grant_time(ngx_http_request_t *r, jwt_t *jwt,
+ngx_http_auth_jwt_get_grant_time(ngx_http_request_t *r, ngx_auth_jwt_t *jwt,
                                  char *claim, char *delimiter, char *quote)
 {
   time_t val;
@@ -1770,7 +1769,7 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
                                        ngx_http_auth_jwt_loc_conf_t *cf,
                                        ngx_http_auth_jwt_ctx_t *ctx,
                                        ngx_array_t *requirements,
-                                       jwt_alg_t *algorithm,
+                                       const char **algorithm,
                                        const auth_jwt_get_json jwt_get_json)
 {
   ngx_uint_t i;
@@ -1906,11 +1905,11 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
       // NOTE: only header requirement
       if (ngx_strcmp("alg", requirement[i].name) == 0) {
         // NOTE: allow NONE algorithm when passing alg requirements
-        if (*algorithm == JWT_ALG_NONE) {
+        if (*algorithm != NULL && ngx_strcmp(*algorithm, "none") == 0) {
           cf->validate.sig = 0;
         }
         // NOTE: do not verify algorithm if alg requirements are met
-        *algorithm = JWT_ALG_TERM;
+        *algorithm = NULL;
       }
     }
   }
@@ -1923,7 +1922,7 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
                            ngx_http_auth_jwt_loc_conf_t *cf,
                            ngx_http_auth_jwt_ctx_t *ctx)
 {
-  jwt_alg_t algorithm;
+  const char *algorithm;
   const char *kid = NULL, *key = NULL;
   json_t *var = NULL;
 
@@ -1933,12 +1932,12 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
     return NGX_ERROR;
   }
 
-  algorithm = jwt_get_alg(ctx->jwt);
+  algorithm = json_string_value(json_object_get(ctx->jwt->headers, "alg"));
 
   if (cf->revocation.subs != NULL) {
     json_t *value = NULL;
     const char * revocation_sub;
-    const char *jwt_sub = jwt_get_grant(ctx->jwt, "sub");
+    const char *jwt_sub = json_string_value(json_object_get(ctx->jwt->payload, "sub"));
 
     if (jwt_sub == NULL){
       return NGX_ERROR;
@@ -1958,7 +1957,7 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
     }
   }
 
-  kid = jwt_get_header(ctx->jwt, "kid");
+  kid = json_string_value(json_object_get(ctx->jwt->headers, "kid"));
 
   if (cf->revocation.kids != NULL) {
     json_t *value = NULL;
@@ -2026,8 +2025,8 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
     return NGX_ERROR;
   }
 
-  /* rejected JWT_ALG_NONE as algorithm */
-  if (algorithm == JWT_ALG_NONE) {
+  /* rejected none algorithm */
+  if (algorithm != NULL && ngx_strcmp(algorithm, "none") == 0) {
     ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
                   "auth_jwt: rejected due to none algorithm");
     return NGX_ERROR;
@@ -2050,7 +2049,7 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
   }
 
   if (key) {
-    if (jwt_verify_sig(ctx->jwt, (char *) ctx->token, ctx->payload_len,
+    if (ngx_auth_jwt_verify_sig(ctx->jwt, (char *) ctx->token, ctx->payload_len,
                        (unsigned char *) key, strlen(key)) == 0) {
       ctx->verified = 1;
       return ngx_http_auth_jwt_validate_variable(r, cf, ctx);
@@ -2068,7 +2067,7 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
 
     key = json_string_value(var);
 
-    if (jwt_verify_sig(ctx->jwt, (char *) ctx->token, ctx->payload_len,
+    if (ngx_auth_jwt_verify_sig(ctx->jwt, (char *) ctx->token, ctx->payload_len,
                        (unsigned char *) key, strlen(key)) == 0) {
       ctx->verified = 1;
       return ngx_http_auth_jwt_validate_variable(r, cf, ctx);
@@ -2185,7 +2184,7 @@ ngx_http_auth_jwt_handler(ngx_http_request_t *r, ngx_int_t phase)
   }
 
   /* parse jwt token */
-  if (jwt_parse(&ctx->jwt, (char *) ctx->token, &ctx->payload_len) != 0
+  if (ngx_auth_jwt_decode(&ctx->jwt, (char *) ctx->token, &ctx->payload_len) != 0
       || ctx->jwt == NULL) {
     ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
                   "auth_jwt: failed to parse jwt token");

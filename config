@@ -6,6 +6,7 @@ ngx_module_name=ngx_http_auth_jwt_module
 ngx_module_srcs="$ngx_addon_dir/src/jwt/base64.c \
                  $ngx_addon_dir/src/jwt/jwt-openssl.c \
                  $ngx_addon_dir/src/jwt/jwt.c \
+                 $ngx_addon_dir/src/ngx_auth_jwt_decode.c \
                  $ngx_addon_dir/src/ngx_auth_jwt_json.c \
                  $ngx_addon_dir/src/ngx_auth_jwt_jwk.c \
                  $ngx_addon_dir/src/ngx_auth_jwt_claims.c \
