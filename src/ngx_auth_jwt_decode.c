@@ -139,21 +139,21 @@ ngx_auth_jwt_decode(ngx_auth_jwt_t **jwt, const char *token,
     head_start = token;
     end = token + token_len;
 
-    body_start = memchr(head_start, '.', (size_t)(end - head_start));
+    body_start = memchr(head_start, '.', (size_t) (end - head_start));
     if (body_start == NULL || body_start == head_start) {
         return EINVAL;
     }
-    head_len = (size_t)(body_start - head_start);
+    head_len = (size_t) (body_start - head_start);
     body_start++;
 
-    sig_start = memchr(body_start, '.', (size_t)(end - body_start));
+    sig_start = memchr(body_start, '.', (size_t) (end - body_start));
     if (sig_start == NULL) {
         return EINVAL;
     }
-    body_len = (size_t)(sig_start - body_start);
+    body_len = (size_t) (sig_start - body_start);
 
     /* reject extra segments (JWE) */
-    if (memchr(sig_start + 1, '.', (size_t)(end - sig_start - 1)) != NULL) {
+    if (memchr(sig_start + 1, '.', (size_t) (end - sig_start - 1)) != NULL) {
         return EINVAL;
     }
 
@@ -205,7 +205,7 @@ ngx_auth_jwt_decode(ngx_auth_jwt_t **jwt, const char *token,
         return ENOMEM;
     }
 
-    new_jwt->payload_len = (unsigned int)(sig_start - token);
+    new_jwt->payload_len = (unsigned int) (sig_start - token);
     *payload_len = new_jwt->payload_len;
     *jwt = new_jwt;
 
@@ -233,5 +233,3 @@ ngx_auth_jwt_free(ngx_auth_jwt_t *jwt)
 
     free(jwt);
 }
-
-

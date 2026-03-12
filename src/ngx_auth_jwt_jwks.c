@@ -352,11 +352,11 @@ cleanup:
  * ================================================================ */
 
 typedef struct {
-    const char  *jwk_crv;
-    const char  *ossl_name;
-    size_t       coord_len;
+    const char *jwk_crv;
+    const char *ossl_name;
+    size_t      coord_len;
 #if OPENSSL_VERSION_NUMBER < 0x30000000L
-    int          nid;
+    int         nid;
 #endif
 } jwks_ec_curve_t;
 

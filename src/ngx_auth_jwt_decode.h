@@ -12,10 +12,10 @@
 #define NGX_AUTH_JWT_MAX_HEADER_LENGTH  8192
 
 typedef struct {
-    json_t         *headers;
-    json_t         *payload;
-    char           *token_copy;
-    unsigned int    payload_len;
+    json_t       *headers;
+    json_t       *payload;
+    char         *token_copy;
+    unsigned int  payload_len;
 } ngx_auth_jwt_t;
 
 int ngx_auth_jwt_decode(ngx_auth_jwt_t **jwt, const char *token,

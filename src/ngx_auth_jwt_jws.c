@@ -162,7 +162,7 @@ jws_is_rsa_alg(const char *alg)
         return 0;
     }
     return (alg[0] == 'R' && alg[1] == 'S')
-        || (alg[0] == 'P' && alg[1] == 'S');
+           || (alg[0] == 'P' && alg[1] == 'S');
 }
 
 

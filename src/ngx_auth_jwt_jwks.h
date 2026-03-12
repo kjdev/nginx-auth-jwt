@@ -20,19 +20,19 @@ typedef enum {
 } ngx_auth_jwt_jwk_type_t;
 
 typedef struct {
-    char                      *kid;
-    char                      *alg;
-    char                      *crv;
-    ngx_auth_jwt_jwk_type_t    kty;
-    EVP_PKEY                  *pkey;       /* for RSA/EC/OKP */
-    unsigned char             *hmac_key;   /* for HMAC (raw key bytes) */
-    size_t                     hmac_key_len;
+    char                    *kid;
+    char                    *alg;
+    char                    *crv;
+    ngx_auth_jwt_jwk_type_t  kty;
+    EVP_PKEY                *pkey;         /* for RSA/EC/OKP */
+    unsigned char           *hmac_key;     /* for HMAC (raw key bytes) */
+    size_t                   hmac_key_len;
 } ngx_auth_jwt_jwks_key_t;
 
 typedef struct {
-    ngx_auth_jwt_jwks_key_t  *keys;
-    size_t                    nkeys;
-    size_t                    capacity;
+    ngx_auth_jwt_jwks_key_t *keys;
+    size_t                   nkeys;
+    size_t                   capacity;
 } ngx_auth_jwt_jwks_keyset_t;
 
 /* Parse JWKS JSON format: {"keys": [...]} */

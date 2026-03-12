@@ -1,10 +1,6 @@
 #ifndef NGX_AUTH_JWT_OPERATOR_H
 #define NGX_AUTH_JWT_OPERATOR_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include <ngx_core.h>
 #include "ngx_auth_jwt_json.h"
 
@@ -27,9 +23,5 @@ extern "C" {
  */
 ngx_int_t ngx_auth_jwt_operator_validate(char *op,
     ngx_auth_jwt_json_t *input, ngx_auth_jwt_json_t *requirement);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* NGX_AUTH_JWT_OPERATOR_H */
