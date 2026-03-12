@@ -4,7 +4,8 @@
 #include <ngx_http.h>
 
 #include "ngx_auth_jwt_decode.h"
-#include "ngx_auth_jwt_jwk.h"
+#include "ngx_auth_jwt_jwks.h"
+#include "ngx_auth_jwt_jws.h"
 #include "ngx_auth_jwt_claims.h"
 #include "ngx_auth_jwt_operator.h"
 
@@ -53,7 +54,7 @@ typedef struct {
   struct {
     ngx_array_t *files;
     ngx_array_t *requests;
-    json_t *vars;
+    ngx_auth_jwt_jwks_keyset_t *vars;
   } key;
   struct {
     ngx_flag_t exp;
@@ -86,7 +87,7 @@ typedef struct {
   u_char *token;
   unsigned int payload_len;
   ngx_auth_jwt_t *jwt;
-  json_t *keys;
+  ngx_auth_jwt_jwks_keyset_t *keys;
   ngx_int_t status;
 } ngx_http_auth_jwt_ctx_t;
 
@@ -302,81 +303,32 @@ ngx_http_auth_jwt_strdup(ngx_pool_t *pool, u_char *data, size_t len)
 }
 
 static int
-ngx_http_auth_jwt_key_import(json_t **object,
-                             const jwks_t *jwks, const json_t *keyval)
+ngx_http_auth_jwt_key_import_file(ngx_auth_jwt_jwks_keyset_t **keyset,
+                                  const char *path, const int is_jwks)
 {
-  if (!jwks && !json_is_object(keyval)) {
-    return 1;
-  }
-
-  if (*object == NULL) {
-    *object = json_object();
-  }
-
-  if (jwks) {
-    const char *id, *key = NULL;
-    size_t key_len;
-
-    jwks_foreach_by(jwks, id) {
-      key = jwks_key_by(jwks, id, &key_len);
-      if (key == NULL || key_len == 0) {
-        continue;
-      }
-      json_object_set_new(*object, id, json_string_nocheck(key));
-    }
-  }
-
-  if (keyval) {
-    const char *key = NULL;
-    json_t *value = NULL;
-
-    json_object_foreach((json_t *) keyval, key, value) {
-      if (!key || !json_is_string(value)) {
-        continue;
-      }
-
-      json_object_set_new(*object, key, json_copy(value));
-    }
-  }
-
-  return 0;
-}
-
-static int
-ngx_http_auth_jwt_key_import_file(json_t **object, const char *path,
-                                  const int is_jwks)
-{
-  int rc;
-  json_t *keyval = NULL;
-  jwks_t *jwks = NULL;
+  ngx_auth_jwt_jwks_keyset_t *loaded;
 
   if (path == NULL) {
     return 1;
   }
 
-  if (is_jwks) {
-    jwks = jwks_import_file(path);
-    if (jwks == NULL) {
-      return 1;
-    }
+  loaded = ngx_auth_jwt_jwks_load_file(path, is_jwks);
+  if (loaded == NULL) {
+    return 1;
+  }
+
+  if (*keyset == NULL) {
+    *keyset = loaded;
   }
   else {
-    keyval = json_load_file(path, 0, NULL);
-    if (keyval == NULL) {
+    if (ngx_auth_jwt_jwks_append(*keyset, loaded) != 0) {
+      ngx_auth_jwt_jwks_free(loaded);
       return 1;
     }
+    ngx_auth_jwt_jwks_free(loaded);
   }
 
-  rc = ngx_http_auth_jwt_key_import(object, jwks, keyval);
-
-  if (jwks) {
-    jwks_free(jwks);
-  }
-  if (keyval) {
-    json_delete(keyval);
-  }
-
-  return rc;
+  return 0;
 }
 
 static int
@@ -417,63 +369,42 @@ ngx_http_auth_jwt_fill_list_object_by_file(json_t **object, const char *path)
 }
 
 static int
-ngx_http_auth_jwt_key_import_string(json_t **object,
+ngx_http_auth_jwt_key_import_string(ngx_auth_jwt_jwks_keyset_t **keyset,
                                     const char *input, const size_t len,
                                     const int is_jwks)
 {
-  int rc;
-  json_t *keyval = NULL;
-  jwks_t *jwks = NULL;
+  ngx_auth_jwt_jwks_keyset_t *loaded;
+  size_t actual_len;
 
   if (input == NULL) {
     return 1;
   }
 
+  actual_len = (len > 0) ? len : strlen(input);
+
   if (is_jwks) {
-    jwks = jwks_import_string(input, len);
-    if (jwks == NULL) {
-      return 1;
-    }
+    loaded = ngx_auth_jwt_jwks_parse(input, actual_len);
   }
   else {
-    if (len == 0) {
-      keyval = json_loads(input, 0, NULL);
-    }
-    else {
-      keyval = json_loadb(input, len, 0, NULL);
-    }
-    if (keyval == NULL) {
+    loaded = ngx_auth_jwt_jwks_parse_keyval(input, actual_len);
+  }
+
+  if (loaded == NULL) {
+    return 1;
+  }
+
+  if (*keyset == NULL) {
+    *keyset = loaded;
+  }
+  else {
+    if (ngx_auth_jwt_jwks_append(*keyset, loaded) != 0) {
+      ngx_auth_jwt_jwks_free(loaded);
       return 1;
     }
+    ngx_auth_jwt_jwks_free(loaded);
   }
 
-  rc = ngx_http_auth_jwt_key_import(object, jwks, keyval);
-
-  if (jwks) {
-    jwks_free(jwks);
-  }
-  if (keyval) {
-    json_delete(keyval);
-  }
-
-  return rc;
-}
-
-static const char *
-ngx_http_auth_jwt_key_get(const json_t *object, const char *kid)
-{
-  json_t *var = NULL;
-
-  if (!json_is_object(object) || kid == NULL) {
-    return NULL;
-  }
-
-  var = json_object_get(object, kid);
-  if (!json_is_string(var)) {
-    return NULL;
-  }
-
-  return json_string_value(var);
+  return 0;
 }
 
 static ngx_http_auth_jwt_ctx_t *
@@ -1405,10 +1336,13 @@ ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
 
   if (prev->key.vars) {
     if (conf->key.vars) {
-      json_object_update_missing(conf->key.vars, prev->key.vars);
+      ngx_auth_jwt_jwks_append(conf->key.vars, prev->key.vars);
     }
     else {
-      conf->key.vars = json_copy(prev->key.vars);
+      conf->key.vars = ngx_auth_jwt_jwks_create();
+      if (conf->key.vars != NULL) {
+        ngx_auth_jwt_jwks_append(conf->key.vars, prev->key.vars);
+      }
     }
   }
 
@@ -1453,7 +1387,7 @@ ngx_http_auth_jwt_exit_process(ngx_cycle_t *cycle)
   conf = (ngx_http_auth_jwt_loc_conf_t *) ctx->loc_conf[index];
 
   if (conf && conf->key.vars) {
-    json_delete(conf->key.vars);
+    ngx_auth_jwt_jwks_free(conf->key.vars);
   }
 
   if (conf && conf->revocation.subs) {
@@ -1479,7 +1413,7 @@ ngx_http_auth_jwt_cleanup(void *data)
   }
 
   if (ctx->keys) {
-    json_delete(ctx->keys);
+    ngx_auth_jwt_jwks_free(ctx->keys);
   }
 }
 
@@ -1593,7 +1527,10 @@ ngx_http_auth_jwt_load_keys(ngx_http_request_t *r,
   }
 
   if (cf->key.vars) {
-    ctx->keys = json_copy(cf->key.vars);
+    ctx->keys = ngx_auth_jwt_jwks_create();
+    if (ctx->keys != NULL) {
+      ngx_auth_jwt_jwks_append(ctx->keys, cf->key.vars);
+    }
   }
 
   if (cf->key.files != NULL) {
@@ -1923,8 +1860,7 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
                            ngx_http_auth_jwt_ctx_t *ctx)
 {
   const char *algorithm;
-  const char *kid = NULL, *key = NULL;
-  json_t *var = NULL;
+  const char *kid = NULL;
 
   if (!cf || !ctx) {
     ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
@@ -2038,40 +1974,27 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
     return ngx_http_auth_jwt_validate_variable(r, cf, ctx);
   }
 
-  if (!ctx->keys) {
+  if (!ctx->keys || ctx->keys->nkeys == 0) {
     ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
                   "auth_jwt: rejected due to without signature key");
     return NGX_ERROR;
   }
 
-  if (kid) {
-    key = ngx_http_auth_jwt_key_get(ctx->keys, kid);
+  /* re-read algorithm if it was cleared by alg requirement validation */
+  if (algorithm == NULL) {
+    algorithm = json_string_value(json_object_get(ctx->jwt->headers, "alg"));
   }
 
-  if (key) {
-    if (ngx_auth_jwt_verify_sig(ctx->jwt, (char *) ctx->token, ctx->payload_len,
-                       (unsigned char *) key, strlen(key)) == 0) {
-      ctx->verified = 1;
-      return ngx_http_auth_jwt_validate_variable(r, cf, ctx);
-    }
-
+  if (algorithm == NULL) {
     ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
-                  "auth_jwt: rejected due to signature validate failure"
-                  ": kid=\"%s\"", kid);
+                  "auth_jwt: rejected due to missing algorithm");
+    return NGX_ERROR;
   }
 
-  json_object_foreach(ctx->keys, kid, var) {
-    if (!kid || !json_is_string(var)) {
-      continue;
-    }
-
-    key = json_string_value(var);
-
-    if (ngx_auth_jwt_verify_sig(ctx->jwt, (char *) ctx->token, ctx->payload_len,
-                       (unsigned char *) key, strlen(key)) == 0) {
-      ctx->verified = 1;
-      return ngx_http_auth_jwt_validate_variable(r, cf, ctx);
-    }
+  if (ngx_auth_jwt_jws_verify((const char *) ctx->token, ctx->payload_len,
+                               ctx->keys, algorithm, kid) == 0) {
+    ctx->verified = 1;
+    return ngx_http_auth_jwt_validate_variable(r, cf, ctx);
   }
 
   ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,

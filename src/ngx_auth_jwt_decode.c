@@ -14,8 +14,6 @@
 #include <openssl/evp.h>
 
 #include "ngx_auth_jwt_decode.h"
-#include "jwt/jwt.h"
-#include "jwt/jwt-private.h"
 
 
 static char *
@@ -237,47 +235,3 @@ ngx_auth_jwt_free(ngx_auth_jwt_t *jwt)
 }
 
 
-int
-ngx_auth_jwt_verify_sig(ngx_auth_jwt_t *jwt, const char *token,
-    unsigned int payload_len, const unsigned char *key, int key_len)
-{
-    struct jwt tmp;
-    const char *alg_str;
-    int ret;
-
-    if (jwt == NULL || token == NULL || key == NULL || key_len <= 0) {
-        return EINVAL;
-    }
-
-    alg_str = json_string_value(json_object_get(jwt->headers, "alg"));
-    if (alg_str == NULL) {
-        return EINVAL;
-    }
-
-    memset(&tmp, 0, sizeof(tmp));
-    tmp.alg = jwt_str_alg(alg_str);
-    if (tmp.alg == JWT_ALG_INVAL || tmp.alg == JWT_ALG_NONE) {
-        return EINVAL;
-    }
-
-    tmp.key = malloc((size_t) key_len);
-    if (tmp.key == NULL) {
-        return ENOMEM;
-    }
-    memcpy(tmp.key, key, (size_t) key_len);
-    tmp.key_len = key_len;
-
-    tmp.headers = jwt->headers;
-    tmp.grants = jwt->payload;
-
-    ret = jwt_verify_sig(&tmp, token, payload_len, key, key_len);
-
-    memset(tmp.key, 0, (size_t) key_len);
-    free(tmp.key);
-
-    /* do not free headers/grants as they belong to jwt */
-    tmp.headers = NULL;
-    tmp.grants = NULL;
-
-    return ret;
-}

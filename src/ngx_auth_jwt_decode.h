@@ -22,7 +22,4 @@ int ngx_auth_jwt_decode(ngx_auth_jwt_t **jwt, const char *token,
     unsigned int *payload_len);
 void ngx_auth_jwt_free(ngx_auth_jwt_t *jwt);
 
-int ngx_auth_jwt_verify_sig(ngx_auth_jwt_t *jwt, const char *token,
-    unsigned int payload_len, const unsigned char *key, int key_len);
-
 #endif /* NGX_AUTH_JWT_DECODE_H */
