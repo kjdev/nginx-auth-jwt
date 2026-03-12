@@ -1,45 +1,127 @@
 name: test
 
-on: [push]
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
   test:
+    permissions:
+      contents: read
+      packages: read
     runs-on: ubuntu-latest
-
-    if: contains(github.event.head_commit.message, 'ci skip') == false
-
-    container:
-      image: alpine:latest
-
     steps:
-      - name: Prepare required command
+      - name: Set up step
         run: |
-          apk --no-cache upgrade
-          apk --no-cache add curl gcc gd-dev geoip-dev git jansson-dev libxslt-dev linux-headers make musl-dev nginx openssl-dev pcre-dev perl-dev perl-utils zlib-dev
-          cpan -Ti Test::Nginx
+          sudo apt-get update
+          sudo apt-get upgrade -y --no-install-recommends
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            ca-certificates \
+            cpanminus \
+            curl \
+            libjansson-dev \
+            nginx \
+            nginx-dev
+          sudo cpanm -n Test::Nginx
         env:
+          nginx_version: ${{ matrix.nginx }}
+          DEBIAN_FRONTEND: noninteractive
+          PERL_MM_OPT: ''
           PERL_MM_USE_DEFAULT: 1
-
+          PERL5LIB: ''
       - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Build
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          set-safe-directory: ${{ github.workspace }}
+          token: ${{ github.token }}
+      - if: ${{ matrix.nginx == 'ubuntu' }}
+        name: Build with Ubuntu
         run: |
-          nginx_version=$(nginx -v 2>&1 | sed 's/^[^0-9]*//')
-          curl -sL -o nginx-${nginx_version}.tar.gz http://nginx.org/download/nginx-${nginx_version}.tar.gz
-          tar xf nginx-${nginx_version}.tar.gz
-          cd nginx-${nginx_version}
+          # Download Nginx
+          nginx_version="$(nginx -v 2>&1 | sed -e 's/^[^0-9]*//' -e 's/ .*$//')"
+          curl -sL -o "nginx-${nginx_version}.tar.gz" "https://nginx.org/download/nginx-${nginx_version}.tar.gz"
+          tar xf "nginx-${nginx_version}.tar.gz"
+          cd "nginx-${nginx_version}"
+          # Configure option
           opt=$(nginx -V 2>&1 | tail -1 | sed -e 's/configure arguments://' -e 's| --add-dynamic-module=[^ ]*||g')
-          ./configure ${opt} --add-dynamic-module=../ --with-cc-opt='-DNGX_HTTP_HEADERS'
-          make
-          mkdir -p /usr/lib/nginx/modules
-          cp objs/ngx_http_auth_jwt_module.so /usr/lib/nginx/modules/
-
+          with_cc_opt=$(echo "${opt}" | grep -e "--with-cc-opt='[^']*'" -o | sed -e "s/^--with-cc-opt='//" -e "s/'$//")
+          with_ld_opt=$(echo "${opt}" | grep -e "--with-ld-opt='[^']*'" -o | sed -e "s/^--with-ld-opt='//" -e "s/'$//")
+          opt=$(echo "${opt}" | sed -e "s|--with-cc-opt='[^']*'||" -e "s|--with-ld-opt='[^']*'||" -e 's/--without-engine//')
+          # Run build
+          # shellcheck disable=SC2086
+          ./configure \
+            ${opt} \
+            --with-cc-opt="${with_cc_opt} -DNGX_HTTP_HEADERS" \
+            --with-ld-opt="${with_ld_opt}" \
+            --add-dynamic-module=..
+          make -j
+          # Copy module
+          sudo mkdir -p /usr/lib/nginx/modules
+          sudo cp objs/ngx_http_auth_jwt_module.so /usr/lib/nginx/modules/
+          sudo ln -sfn /usr/sbin/nginx /usr/local/sbin/nginx
+      - if: ${{ matrix.nginx != 'ubuntu' }}
+        name: Build with sources
+        run: |
+          # Download Nginx
+          curl -sL -o "nginx-${nginx_version}.tar.gz" "https://nginx.org/download/nginx-${nginx_version}.tar.gz"
+          tar xf "nginx-${nginx_version}.tar.gz"
+          cd "nginx-${nginx_version}"
+          # Run build
+          ./configure \
+            --with-compat \
+            --with-pcre \
+            --with-pcre-jit \
+            --add-dynamic-module=..
+          make -j
+          # Copy module
+          sudo mkdir -p /usr/lib/nginx/modules
+          sudo cp objs/ngx_http_auth_jwt_module.so /usr/lib/nginx/modules/
+          sudo cp objs/nginx /usr/local/sbin/
+        env:
+          nginx_version: ${{ matrix.nginx }}
       - name: Test
         run: |
-          export TEST_NGINX_CONF_DIR=${PWD}/t/conf
-          export TEST_NGINX_DATA_DIR=${PWD}/t/data
-          prove -r t 2> /dev/null
+          # nginx
+          echo "::group::nginx show version"
+          ${TEST_NGINX_BINARY} -V
+          echo "::endgroup::"
+          # Run test
+          export TEST_NGINX_CONF_DIR="${PWD}/t/conf"
+          export TEST_NGINX_DATA_DIR="${PWD}/t/data"
+          set +e
+          prove -r t 2> stderr.log
+          test_status=$?
+          set -e
+          # stderr
+          if [ -s stderr.log ]; then
+            echo "::group::stderr"
+            cat stderr.log
+            echo "::endgroup::"
+          fi
+          exit "${test_status}"
         env:
           TEST_NGINX_LOAD_MODULES: /usr/lib/nginx/modules/ngx_http_auth_jwt_module.so
           TEST_NGINX_SERVROOT: /tmp/servroot
+          TEST_NGINX_BINARY: /usr/local/sbin/nginx
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        nginx:
+          - ubuntu
+          - '1.29.6'

@@ -1,39 +1,89 @@
 name: package
 
 on:
-  push:
-    branches:
-      - main
-    tags:
-      - '[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions: {}
+
+env:
+  container: ${{ github.repository }}/nginx
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  package:
-    runs-on: ubuntu-latest
+  build:
     permissions:
       contents: read
       packages: write
+    runs-on: ${{ matrix.arch == 'amd64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          set-safe-directory: ${{ github.workspace }}
+          token: ${{ github.token }}
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
+          password: ${{ github.token }}
       - name: Build and push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/${{ matrix.arch }}
           provenance: false
           push: true
-          tags: ghcr.io/${{ github.repository }}/nginx:${{ env.TAG }}
+          tags: ghcr.io/${{ env.container }}:${{ github.event_name == 'release' && github.event.release.tag_name || (github.ref_name == github.event.repository.default_branch && 'latest' || format('dev-{0}', github.sha)) }}-${{ matrix.arch }}
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+
+  index:
+    permissions:
+      contents: read
+      packages: write
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Build and push
+        run: |
+          docker buildx imagetools create \
+            -t "${CONTAINER}:${TAG}" \
+            "${CONTAINER}:${TAG}-amd64" \
+            "${CONTAINER}:${TAG}-arm64"
         env:
-          TAG: ${{ github.ref_name == 'main' && 'latest' || github.ref_name }}
+          CONTAINER: ghcr.io/${{ env.container }}
+          TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || (github.ref_name == github.event.repository.default_branch && 'latest' || format('dev-{0}', github.sha)) }}
+      - name: Clean up
+        uses: dataaxiom/ghcr-cleanup-action@cd0cdb900b5dbf3a6f2cc869f0dbb0b8211f50c4 # v1.0.16
+        with:
+          owner: ${{ github.repository_owner }}
+          package: ${{ github.event.repository.name }}/nginx
+          token: ${{ github.token }}
+          keep-n-untagged: 0
+        continue-on-error: true
+    timeout-minutes: 30
