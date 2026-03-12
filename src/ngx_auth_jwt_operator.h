@@ -5,8 +5,8 @@
 extern "C" {
 #endif
 
-#include <jansson.h>
 #include <ngx_core.h>
+#include "ngx_auth_jwt_json.h"
 
 #define NGX_AUTH_JWT_OPERATOR_EQ "eq"
 #define NGX_AUTH_JWT_OPERATOR_NE "ne"
@@ -19,7 +19,14 @@ extern "C" {
 #define NGX_AUTH_JWT_OPERATOR_IN "in"
 #define NGX_AUTH_JWT_OPERATOR_NIN "nin"
 
-ngx_int_t ngx_auth_jwt_operator_validate(char *op, json_t *input, json_t *requirement);
+/*
+ * Returns:
+ *   NGX_OK       condition met
+ *   NGX_DECLINED condition not met (valid comparison)
+ *   NGX_ERROR    internal error (type mismatch, etc.)
+ */
+ngx_int_t ngx_auth_jwt_operator_validate(char *op,
+    ngx_auth_jwt_json_t *input, ngx_auth_jwt_json_t *requirement);
 
 #ifdef __cplusplus
 }

@@ -1,268 +1,223 @@
+/*
+ * Copyright (c) Tatsuya Kamijo
+ * Copyright (c) Bengo4.com, Inc.
+ *
+ * Operator comparison logic for nginx-auth-jwt module
+ *
+ * Returns:
+ *   NGX_OK       condition met
+ *   NGX_DECLINED condition not met (valid comparison)
+ *   NGX_ERROR    internal error (type mismatch, etc.)
+ *
+ * Negation operators (ne, nin, nintersect) are implemented by
+ * calling the positive operator and flipping NGX_OK <-> NGX_DECLINED.
+ * NGX_ERROR is never flipped (authorization bypass prevention).
+ */
+
 #include "ngx_auth_jwt_operator.h"
 
+#define NGX_AUTH_JWT_MAX_ARRAY_SIZE  1024
+
+
 static ngx_int_t
-ngx_auth_jwt_op_eq(json_t *input, json_t *requirement)
+ngx_auth_jwt_op_eq(ngx_auth_jwt_json_t *input,
+    ngx_auth_jwt_json_t *requirement)
 {
-  return json_equal(input, requirement) == 1 ? NGX_OK : NGX_ERROR;
+  return ngx_auth_jwt_json_equal(input, requirement)
+         ? NGX_OK : NGX_DECLINED;
 }
 
-static ngx_int_t
-ngx_auth_jwt_op_ne(json_t *input, json_t *requirement)
-{
-  return json_equal(input, requirement) != 1 ? NGX_OK : NGX_ERROR;
-}
 
 static ngx_int_t
-ngx_auth_jwt_op_gt(json_t *input, json_t *requirement)
+ngx_auth_jwt_op_gt(ngx_auth_jwt_json_t *input,
+    ngx_auth_jwt_json_t *requirement)
 {
-  if (!json_is_integer(requirement)) {
-    return NGX_ERROR;
-  }
+  double diff;
 
-  if (json_is_integer(input)) {
-    return json_integer_value(input) > json_integer_value(requirement)
-      ? NGX_OK : NGX_ERROR;
-  }
-  else if (json_is_number(input)) {
-    return json_number_value(input) > json_number_value(requirement)
-      ? NGX_OK : NGX_ERROR;
+  if (ngx_auth_jwt_json_compare(input, requirement, &diff, NULL) == NGX_OK) {
+    return (diff > 0) ? NGX_OK : NGX_DECLINED;
   }
 
   return NGX_ERROR;
 }
 
-static ngx_int_t
-ngx_auth_jwt_op_ge(json_t *input, json_t *requirement)
-{
-  if (!json_is_integer(requirement)) {
-    return NGX_ERROR;
-  }
 
-  if (json_is_integer(input)) {
-    return json_integer_value(input) >= json_integer_value(requirement)
-      ? NGX_OK : NGX_ERROR;
-  }
-  else if (json_is_number(input)) {
-    return json_number_value(input) >= json_number_value(requirement)
-      ? NGX_OK : NGX_ERROR;
+static ngx_int_t
+ngx_auth_jwt_op_ge(ngx_auth_jwt_json_t *input,
+    ngx_auth_jwt_json_t *requirement)
+{
+  double diff;
+
+  if (ngx_auth_jwt_json_compare(input, requirement, &diff, NULL) == NGX_OK) {
+    return (diff >= 0) ? NGX_OK : NGX_DECLINED;
   }
 
   return NGX_ERROR;
 }
 
-static ngx_int_t
-ngx_auth_jwt_op_lt(json_t *input, json_t *requirement)
-{
-  if (!json_is_integer(requirement)) {
-    return NGX_ERROR;
-  }
 
-  if (json_is_integer(input)) {
-    return json_integer_value(input) < json_integer_value(requirement)
-      ? NGX_OK : NGX_ERROR;
-  }
-  else if (json_is_number(input)) {
-    return json_number_value(input) < json_number_value(requirement)
-      ? NGX_OK : NGX_ERROR;
+static ngx_int_t
+ngx_auth_jwt_op_lt(ngx_auth_jwt_json_t *input,
+    ngx_auth_jwt_json_t *requirement)
+{
+  double diff;
+
+  if (ngx_auth_jwt_json_compare(input, requirement, &diff, NULL) == NGX_OK) {
+    return (diff < 0) ? NGX_OK : NGX_DECLINED;
   }
 
   return NGX_ERROR;
 }
 
-static ngx_int_t
-ngx_auth_jwt_op_le(json_t *input, json_t *requirement)
-{
-  if (!json_is_integer(requirement)) {
-    return NGX_ERROR;
-  }
 
-  if (json_is_integer(input)) {
-    return json_integer_value(input) <= json_integer_value(requirement)
-      ? NGX_OK : NGX_ERROR;
-  }
-  else if (json_is_number(input)) {
-    return json_number_value(input) <= json_number_value(requirement)
-      ? NGX_OK : NGX_ERROR;
+static ngx_int_t
+ngx_auth_jwt_op_le(ngx_auth_jwt_json_t *input,
+    ngx_auth_jwt_json_t *requirement)
+{
+  double diff;
+
+  if (ngx_auth_jwt_json_compare(input, requirement, &diff, NULL) == NGX_OK) {
+    return (diff <= 0) ? NGX_OK : NGX_DECLINED;
   }
 
   return NGX_ERROR;
 }
 
-static ngx_int_t
-ngx_auth_jwt_op_intersect(json_t *input, json_t *requirement)
-{
-  ngx_flag_t invalid = 1;
-  json_t *input_val = NULL, *requirement_val = NULL;
-  size_t input_index, requirement_index;
 
-  if (!json_is_array(requirement)) {
+static ngx_int_t
+ngx_auth_jwt_op_intersect(ngx_auth_jwt_json_t *input,
+    ngx_auth_jwt_json_t *requirement)
+{
+  size_t i, j, input_size, req_size;
+  ngx_auth_jwt_json_t *input_val, *req_val;
+
+  if (!ngx_auth_jwt_json_is_array(requirement)) {
     return NGX_ERROR;
   }
 
-  if (json_is_array(input)) {
-    json_array_foreach(input, input_index, input_val) {
-      if (invalid == 0) {
-        break;
-      }
-      json_array_foreach(requirement, requirement_index, requirement_val) {
-        if (json_equal(input_val, requirement_val) == 1) {
-          invalid = 0;
-          break;
+  req_size = ngx_auth_jwt_json_array_size(requirement);
+  if (req_size > NGX_AUTH_JWT_MAX_ARRAY_SIZE) {
+    return NGX_ERROR;
+  }
+
+  if (ngx_auth_jwt_json_is_array(input)) {
+    input_size = ngx_auth_jwt_json_array_size(input);
+    if (input_size > NGX_AUTH_JWT_MAX_ARRAY_SIZE) {
+      return NGX_ERROR;
+    }
+
+    for (i = 0; i < input_size; i++) {
+      input_val = ngx_auth_jwt_json_array_get(input, i);
+      for (j = 0; j < req_size; j++) {
+        req_val = ngx_auth_jwt_json_array_get(requirement, j);
+        if (ngx_auth_jwt_json_equal(input_val, req_val)) {
+          return NGX_OK;
         }
       }
     }
   }
   else {
-    json_array_foreach(requirement, requirement_index, requirement_val) {
-      if (json_equal(input, requirement_val) == 1) {
-        invalid = 0;
-        break;
+    for (j = 0; j < req_size; j++) {
+      req_val = ngx_auth_jwt_json_array_get(requirement, j);
+      if (ngx_auth_jwt_json_equal(input, req_val)) {
+        return NGX_OK;
       }
     }
   }
 
-  return invalid == 0 ? NGX_OK : NGX_ERROR;
+  return NGX_DECLINED;
 }
+
 
 static ngx_int_t
-ngx_auth_jwt_op_nintersect(json_t *input, json_t *requirement)
+ngx_auth_jwt_op_in(ngx_auth_jwt_json_t *input,
+    ngx_auth_jwt_json_t *requirement)
 {
-  ngx_flag_t invalid = 0;
-  json_t *input_val = NULL, *requirement_val = NULL;
-  size_t input_index, requirement_index;
+  size_t i, size;
+  ngx_auth_jwt_json_t *val;
 
-  if (!json_is_array(requirement)) {
-    return NGX_ERROR;
-  }
+  if (ngx_auth_jwt_json_is_array(requirement)) {
+    size = ngx_auth_jwt_json_array_size(requirement);
+    if (size > NGX_AUTH_JWT_MAX_ARRAY_SIZE) {
+      return NGX_ERROR;
+    }
 
-  if (json_is_array(input)) {
-    json_array_foreach(input, input_index, input_val) {
-      if (invalid == 1) {
-        break;
-      }
-      json_array_foreach(requirement, requirement_index, requirement_val) {
-        if (json_equal(input_val, requirement_val) == 1) {
-          invalid = 1;
-          break;
-        }
+    for (i = 0; i < size; i++) {
+      val = ngx_auth_jwt_json_array_get(requirement, i);
+      if (ngx_auth_jwt_json_equal(input, val)) {
+        return NGX_OK;
       }
     }
-  }
-  else {
-    json_array_foreach(requirement, requirement_index, requirement_val) {
-      if (json_equal(input, requirement_val) == 1) {
-        invalid = 1;
-        break;
-      }
-    }
+
+    return NGX_DECLINED;
   }
 
-  return invalid == 0 ? NGX_OK : NGX_ERROR;
+  if (ngx_auth_jwt_json_is_object(requirement)) {
+    const char *key_str;
+    size_t key_len;
+
+    if (ngx_auth_jwt_json_string(input, &key_str, &key_len) != NGX_OK) {
+      return NGX_ERROR;
+    }
+    if (strlen(key_str) != key_len) {
+      return NGX_ERROR;
+    }
+
+    val = ngx_auth_jwt_json_object_get(requirement, key_str);
+    return (val != NULL) ? NGX_OK : NGX_DECLINED;
+  }
+
+  return NGX_ERROR;
 }
+
 
 static ngx_int_t
-ngx_auth_jwt_op_in(json_t *input, json_t *requirement)
+ngx_auth_jwt_op_negate(ngx_int_t rc)
 {
-  ngx_flag_t invalid = 1;
-
-  if (json_is_array(requirement)) {
-    json_t *val = NULL;
-    size_t index;
-
-    json_array_foreach(requirement, index, val) {
-      if (json_equal(input, val) == 1) {
-        invalid = 0;
-        break;
-      }
-    }
+  switch (rc) {
+  case NGX_OK:
+    return NGX_DECLINED;
+  case NGX_DECLINED:
+    return NGX_OK;
+  default:
+    /* NGX_ERROR is never flipped */
+    return rc;
   }
-  else if (json_is_object(requirement)) {
-    json_t *val = NULL;
-    const char *key;
-
-    json_object_foreach(requirement, key, val) {
-      if (json_equal(input, val) == 1) {
-        invalid = 0;
-        break;
-      }
-    }
-  }
-  else {
-    return NGX_ERROR;
-  }
-
-  return invalid == 0 ? NGX_OK : NGX_ERROR;
 }
 
-static ngx_int_t
-ngx_auth_jwt_op_nin(json_t *input, json_t *requirement)
-{
-  ngx_flag_t invalid = 0;
-
-  if (json_is_array(requirement)) {
-    json_t *val = NULL;
-    size_t index;
-
-    json_array_foreach(requirement, index, val) {
-      if (json_equal(input, val) == 1) {
-        invalid = 1;
-        break;
-      }
-    }
-  }
-  else if (json_is_object(requirement)) {
-    json_t *val = NULL;
-    const char *key;
-
-    json_object_foreach(requirement, key, val) {
-      if (json_equal(input, val) == 1) {
-        invalid = 1;
-        break;
-      }
-    }
-  }
-  else {
-    return NGX_ERROR;
-  }
-
-  return invalid == 0 ? NGX_OK : NGX_ERROR;
-}
 
 #define OPERATOR_IS(op, data) ngx_strcmp(data, NGX_AUTH_JWT_OPERATOR_ ## op) == 0
 
 ngx_int_t
-ngx_auth_jwt_operator_validate(char *op, json_t *input, json_t *requirement)
+ngx_auth_jwt_operator_validate(char *op,
+    ngx_auth_jwt_json_t *input, ngx_auth_jwt_json_t *requirement)
 {
-  if (OPERATOR_IS(EQ, op)) {
-    return ngx_auth_jwt_op_eq(input, requirement);
-  }
-  else if (OPERATOR_IS(NE, op)) {
-    return ngx_auth_jwt_op_ne(input, requirement);
-  }
-  else if (OPERATOR_IS(GT, op)) {
-    return ngx_auth_jwt_op_gt(input, requirement);
-  }
-  else if (OPERATOR_IS(GE, op)) {
-    return ngx_auth_jwt_op_ge(input, requirement);
-  }
-  else if (OPERATOR_IS(LT, op)) {
-    return ngx_auth_jwt_op_lt(input, requirement);
-  }
-  else if (OPERATOR_IS(LE, op)) {
-    return ngx_auth_jwt_op_le(input, requirement);
-  }
-  else if (OPERATOR_IS(INTERSECT, op)) {
-    return ngx_auth_jwt_op_intersect(input, requirement);
-  }
-  else if (OPERATOR_IS(NINTERSECT, op)) {
-    return ngx_auth_jwt_op_nintersect(input, requirement);
-  }
-  else if (OPERATOR_IS(IN, op)) {
-    return ngx_auth_jwt_op_in(input, requirement);
-  }
-  else if (OPERATOR_IS(NIN, op)) {
-    return ngx_auth_jwt_op_nin(input, requirement);
-  }
+    if (op == NULL || input == NULL || requirement == NULL) {
+        return NGX_ERROR;
+    }
 
-  return NGX_ERROR;
+    if (OPERATOR_IS(EQ, op)) {
+        return ngx_auth_jwt_op_eq(input, requirement);
+    }else if (OPERATOR_IS(NE, op)) {
+        return ngx_auth_jwt_op_negate(ngx_auth_jwt_op_eq(input, requirement));
+    }else if (OPERATOR_IS(GT, op)) {
+        return ngx_auth_jwt_op_gt(input, requirement);
+    }else if (OPERATOR_IS(GE, op)) {
+        return ngx_auth_jwt_op_ge(input, requirement);
+    }else if (OPERATOR_IS(LT, op)) {
+        return ngx_auth_jwt_op_lt(input, requirement);
+    }else if (OPERATOR_IS(LE, op)) {
+        return ngx_auth_jwt_op_le(input, requirement);
+    }else if (OPERATOR_IS(INTERSECT, op)) {
+        return ngx_auth_jwt_op_intersect(input, requirement);
+    }else if (OPERATOR_IS(NINTERSECT, op)) {
+        return ngx_auth_jwt_op_negate(
+            ngx_auth_jwt_op_intersect(input, requirement));
+    }else if (OPERATOR_IS(IN, op)) {
+        return ngx_auth_jwt_op_in(input, requirement);
+    }else if (OPERATOR_IS(NIN, op)) {
+        return ngx_auth_jwt_op_negate(ngx_auth_jwt_op_in(input, requirement));
+    }
+
+    return NGX_ERROR;
 }
