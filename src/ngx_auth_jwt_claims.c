@@ -1,7 +1,7 @@
 #include <errno.h>
 #include <jansson.h>
 #include <string.h>
-#include "jwt_get_claims.h"
+#include "ngx_auth_jwt_claims.h"
 #include "jwt/jwt-private.h"
 
 static json_t *
@@ -174,8 +174,8 @@ get_js_bool(const json_t *js, const char *key,
 }
 
 const char *
-ngx_http_auth_jwt_get_header(jwt_t *jwt, const char *header,
-                             const char *delim, const char *quote)
+ngx_auth_jwt_claims_get_header(jwt_t *jwt, const char *header,
+                               const char *delim, const char *quote)
 {
   if (delim == NULL) {
     return jwt_get_header(jwt, header);
@@ -192,8 +192,8 @@ ngx_http_auth_jwt_get_header(jwt_t *jwt, const char *header,
 }
 
 long
-ngx_http_auth_jwt_get_header_int(jwt_t *jwt, const char *header,
-                                 const char *delim, const char *quote)
+ngx_auth_jwt_claims_get_header_int(jwt_t *jwt, const char *header,
+                                   const char *delim, const char *quote)
 {
   if (delim == NULL) {
     return jwt_get_header_int(jwt, header);
@@ -210,8 +210,8 @@ ngx_http_auth_jwt_get_header_int(jwt_t *jwt, const char *header,
 }
 
 int
-ngx_http_auth_jwt_get_header_bool(jwt_t *jwt, const char *header,
-                                  const char *delim, const char *quote)
+ngx_auth_jwt_claims_get_header_bool(jwt_t *jwt, const char *header,
+                                    const char *delim, const char *quote)
 {
   if (delim == NULL) {
     return jwt_get_header_bool(jwt, header);
@@ -228,8 +228,8 @@ ngx_http_auth_jwt_get_header_bool(jwt_t *jwt, const char *header,
 }
 
 char *
-ngx_http_auth_jwt_get_headers_json(jwt_t *jwt, const char *header,
-                                   const char *delim, const char *quote)
+ngx_auth_jwt_claims_get_headers_json(jwt_t *jwt, const char *header,
+                                     const char *delim, const char *quote)
 {
   json_t *js_val = NULL;
 
@@ -254,8 +254,8 @@ ngx_http_auth_jwt_get_headers_json(jwt_t *jwt, const char *header,
 }
 
 const char *
-ngx_http_auth_jwt_get_grant(jwt_t *jwt, const char *grant,
-                            const char *delim, const char *quote)
+ngx_auth_jwt_claims_get_grant(jwt_t *jwt, const char *grant,
+                              const char *delim, const char *quote)
 {
   if (delim == NULL) {
     return jwt_get_grant(jwt, grant);
@@ -272,8 +272,8 @@ ngx_http_auth_jwt_get_grant(jwt_t *jwt, const char *grant,
 }
 
 long
-ngx_http_auth_jwt_get_grant_int(jwt_t *jwt, const char *grant,
-                                const char *delim, const char *quote)
+ngx_auth_jwt_claims_get_grant_int(jwt_t *jwt, const char *grant,
+                                  const char *delim, const char *quote)
 {
   if (delim == NULL) {
     return jwt_get_grant_int(jwt, grant);
@@ -290,8 +290,8 @@ ngx_http_auth_jwt_get_grant_int(jwt_t *jwt, const char *grant,
 }
 
 int
-ngx_http_auth_jwt_get_grant_bool(jwt_t *jwt, const char *grant,
-                                 const char *delim, const char *quote)
+ngx_auth_jwt_claims_get_grant_bool(jwt_t *jwt, const char *grant,
+                                   const char *delim, const char *quote)
 {
   if (delim == NULL) {
     return jwt_get_grant_bool(jwt, grant);
@@ -308,8 +308,8 @@ ngx_http_auth_jwt_get_grant_bool(jwt_t *jwt, const char *grant,
 }
 
 char *
-ngx_http_auth_jwt_get_grants_json(jwt_t *jwt, const char *grant,
-                                  const char *delim, const char *quote)
+ngx_auth_jwt_claims_get_grants_json(jwt_t *jwt, const char *grant,
+                                    const char *delim, const char *quote)
 {
   json_t *js_val = NULL;
 

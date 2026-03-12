@@ -1,19 +1,19 @@
-#include "jwt_requirement_operators.h"
+#include "ngx_auth_jwt_operator.h"
 
 static ngx_int_t
-jwt_requirement_eq(json_t *input, json_t *requirement)
+ngx_auth_jwt_op_eq(json_t *input, json_t *requirement)
 {
   return json_equal(input, requirement) == 1 ? NGX_OK : NGX_ERROR;
 }
 
 static ngx_int_t
-jwt_requirement_not_eq(json_t *input, json_t *requirement)
+ngx_auth_jwt_op_ne(json_t *input, json_t *requirement)
 {
   return json_equal(input, requirement) != 1 ? NGX_OK : NGX_ERROR;
 }
 
 static ngx_int_t
-jwt_requirement_greater_than(json_t *input, json_t *requirement)
+ngx_auth_jwt_op_gt(json_t *input, json_t *requirement)
 {
   if (!json_is_integer(requirement)) {
     return NGX_ERROR;
@@ -32,7 +32,7 @@ jwt_requirement_greater_than(json_t *input, json_t *requirement)
 }
 
 static ngx_int_t
-jwt_requirement_greater_or_equal(json_t *input, json_t *requirement)
+ngx_auth_jwt_op_ge(json_t *input, json_t *requirement)
 {
   if (!json_is_integer(requirement)) {
     return NGX_ERROR;
@@ -51,7 +51,7 @@ jwt_requirement_greater_or_equal(json_t *input, json_t *requirement)
 }
 
 static ngx_int_t
-jwt_requirement_less_than(json_t *input, json_t *requirement)
+ngx_auth_jwt_op_lt(json_t *input, json_t *requirement)
 {
   if (!json_is_integer(requirement)) {
     return NGX_ERROR;
@@ -70,7 +70,7 @@ jwt_requirement_less_than(json_t *input, json_t *requirement)
 }
 
 static ngx_int_t
-jwt_requirement_less_or_equal(json_t *input, json_t *requirement)
+ngx_auth_jwt_op_le(json_t *input, json_t *requirement)
 {
   if (!json_is_integer(requirement)) {
     return NGX_ERROR;
@@ -89,7 +89,7 @@ jwt_requirement_less_or_equal(json_t *input, json_t *requirement)
 }
 
 static ngx_int_t
-jwt_requirement_intersection(json_t *input, json_t *requirement)
+ngx_auth_jwt_op_intersect(json_t *input, json_t *requirement)
 {
   ngx_flag_t invalid = 1;
   json_t *input_val = NULL, *requirement_val = NULL;
@@ -125,7 +125,7 @@ jwt_requirement_intersection(json_t *input, json_t *requirement)
 }
 
 static ngx_int_t
-jwt_requirement_not_intersection(json_t *input, json_t *requirement)
+ngx_auth_jwt_op_nintersect(json_t *input, json_t *requirement)
 {
   ngx_flag_t invalid = 0;
   json_t *input_val = NULL, *requirement_val = NULL;
@@ -161,7 +161,7 @@ jwt_requirement_not_intersection(json_t *input, json_t *requirement)
 }
 
 static ngx_int_t
-jwt_requirement_in(json_t *input, json_t *requirement)
+ngx_auth_jwt_op_in(json_t *input, json_t *requirement)
 {
   ngx_flag_t invalid = 1;
 
@@ -195,7 +195,7 @@ jwt_requirement_in(json_t *input, json_t *requirement)
 }
 
 static ngx_int_t
-jwt_requirement_not_in(json_t *input, json_t *requirement)
+ngx_auth_jwt_op_nin(json_t *input, json_t *requirement)
 {
   ngx_flag_t invalid = 0;
 
@@ -228,42 +228,40 @@ jwt_requirement_not_in(json_t *input, json_t *requirement)
   return invalid == 0 ? NGX_OK : NGX_ERROR;
 }
 
-#define OPERATOR_IS(op, data) ngx_strcmp(data, NGX_HTTP_AUTH_JWT_REQUIRE_ ## op ## _OPERATOR) == 0
+#define OPERATOR_IS(op, data) ngx_strcmp(data, NGX_AUTH_JWT_OPERATOR_ ## op) == 0
 
 ngx_int_t
-ngx_http_auth_jwt_validate_requirement_by_operator(char *op,
-                                                   json_t *input,
-                                                   json_t *requirement)
+ngx_auth_jwt_operator_validate(char *op, json_t *input, json_t *requirement)
 {
-  if (OPERATOR_IS(EQUAL, op)) {
-    return jwt_requirement_eq(input, requirement);
+  if (OPERATOR_IS(EQ, op)) {
+    return ngx_auth_jwt_op_eq(input, requirement);
   }
-  else if (OPERATOR_IS(NOT_EQUAL, op)) {
-    return jwt_requirement_not_eq(input, requirement);
+  else if (OPERATOR_IS(NE, op)) {
+    return ngx_auth_jwt_op_ne(input, requirement);
   }
-  else if (OPERATOR_IS(GREATER_THAN, op)) {
-    return jwt_requirement_greater_than(input, requirement);
+  else if (OPERATOR_IS(GT, op)) {
+    return ngx_auth_jwt_op_gt(input, requirement);
   }
-  else if (OPERATOR_IS(GREATER_OR_EQUAL, op)) {
-    return jwt_requirement_greater_or_equal(input, requirement);
+  else if (OPERATOR_IS(GE, op)) {
+    return ngx_auth_jwt_op_ge(input, requirement);
   }
-  else if (OPERATOR_IS(LESS_THAN, op)) {
-    return jwt_requirement_less_than(input, requirement);
+  else if (OPERATOR_IS(LT, op)) {
+    return ngx_auth_jwt_op_lt(input, requirement);
   }
-  else if (OPERATOR_IS(LESS_OR_EQUAL, op)) {
-    return jwt_requirement_less_or_equal(input, requirement);
+  else if (OPERATOR_IS(LE, op)) {
+    return ngx_auth_jwt_op_le(input, requirement);
   }
-  else if (OPERATOR_IS(INTERSECTION, op)) {
-    return jwt_requirement_intersection(input, requirement);
+  else if (OPERATOR_IS(INTERSECT, op)) {
+    return ngx_auth_jwt_op_intersect(input, requirement);
   }
-  else if (OPERATOR_IS(NOT_INTERSECTION, op)) {
-    return jwt_requirement_not_intersection(input, requirement);
+  else if (OPERATOR_IS(NINTERSECT, op)) {
+    return ngx_auth_jwt_op_nintersect(input, requirement);
   }
   else if (OPERATOR_IS(IN, op)) {
-    return jwt_requirement_in(input, requirement);
+    return ngx_auth_jwt_op_in(input, requirement);
   }
-  else if (OPERATOR_IS(NOT_IN, op)) {
-    return jwt_requirement_not_in(input, requirement);
+  else if (OPERATOR_IS(NIN, op)) {
+    return ngx_auth_jwt_op_nin(input, requirement);
   }
 
   return NGX_ERROR;

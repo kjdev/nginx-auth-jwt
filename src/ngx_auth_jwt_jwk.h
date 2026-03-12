@@ -1,5 +1,5 @@
-#ifndef JWK_H
-#define JWK_H
+#ifndef NGX_AUTH_JWT_JWK_H
+#define NGX_AUTH_JWT_JWK_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -61,4 +61,4 @@ void *jwks_iter_by(const char *id);
 }
 #endif
 
-#endif /* JWK_H */
+#endif /* NGX_AUTH_JWT_JWK_H */

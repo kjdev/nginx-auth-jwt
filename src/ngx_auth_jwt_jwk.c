@@ -12,7 +12,7 @@
 #include <openssl/param_build.h>
 #endif
 
-#include "jwk.h"
+#include "ngx_auth_jwt_jwk.h"
 
 /* jwk key type */
 
