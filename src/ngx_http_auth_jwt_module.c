@@ -375,6 +375,7 @@ ngx_http_auth_jwt_fill_list_object_by_file(json_t **object, const char *path)
     }
 
     if (!json_is_object(keyval)) {
+        json_delete(keyval);
         return 1;
     }
 
@@ -882,7 +883,7 @@ ngx_http_auth_jwt_conf_set_requirement(ngx_conf_t *cf,
 
     if (*requirements == NULL) {
         *requirements = ngx_array_create(cf->pool, 4, sizeof(*requirement));
-        if (requirements == NULL) {
+        if (*requirements == NULL) {
             return "failed to allocate memory for require";
         }
     }
