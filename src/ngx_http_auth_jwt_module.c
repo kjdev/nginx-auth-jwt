@@ -1991,10 +1991,25 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
     return NGX_ERROR;
   }
 
-  if (ngx_auth_jwt_jws_verify((const char *) ctx->token, ctx->payload_len,
-                               ctx->keys, algorithm, kid) == 0) {
-    ctx->verified = 1;
-    return ngx_http_auth_jwt_validate_variable(r, cf, ctx);
+  {
+    int jws_rc;
+    int kid_tried = 0;
+
+    jws_rc = ngx_auth_jwt_jws_verify((const char *) ctx->token,
+                                      ctx->payload_len,
+                                      ctx->keys, algorithm, kid,
+                                      &kid_tried);
+
+    if (kid_tried && kid) {
+      ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
+                    "auth_jwt: rejected due to signature validate failure"
+                    ": kid=\"%s\"", kid);
+    }
+
+    if (jws_rc == 0) {
+      ctx->verified = 1;
+      return ngx_http_auth_jwt_validate_variable(r, cf, ctx);
+    }
   }
 
   ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,

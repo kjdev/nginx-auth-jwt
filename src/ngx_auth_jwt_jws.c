@@ -485,18 +485,82 @@ jws_ec_curve_matches_alg(const ngx_auth_jwt_jwks_key_t *key, const char *alg)
 
 
 /* ================================================================
+ * Internal: try verifying signature against a single key
+ * ================================================================ */
+
+static int
+jws_try_key(const unsigned char *token, size_t payload_len,
+    const unsigned char *sig, size_t sig_len,
+    ngx_auth_jwt_jwks_key_t *key, const char *alg)
+{
+    /* alg/kty compatibility */
+    if (!jws_key_matches_alg(key, alg)) {
+        return -1;
+    }
+
+    /* EC curve compatibility */
+    if (key->kty == NGX_AUTH_JWT_JWK_EC) {
+        if (!jws_ec_curve_matches_alg(key, alg)) {
+            return -1;
+        }
+    }
+
+    switch (key->kty) {
+    case NGX_AUTH_JWT_JWK_RSA:
+        if (key->pkey != NULL) {
+            return jws_verify_rsa(token, payload_len,
+                                  sig, sig_len, key->pkey, alg);
+        }
+        break;
+
+    case NGX_AUTH_JWT_JWK_EC:
+        if (key->pkey != NULL) {
+            return jws_verify_ec(token, payload_len,
+                                 sig, sig_len, key->pkey, alg);
+        }
+        break;
+
+    case NGX_AUTH_JWT_JWK_OKP:
+        if (key->pkey != NULL) {
+            return jws_verify_eddsa(token, payload_len,
+                                    sig, sig_len, key->pkey);
+        }
+        break;
+
+    case NGX_AUTH_JWT_JWK_HMAC:
+        if (key->hmac_key != NULL) {
+            return jws_verify_hmac(token, payload_len,
+                                   sig, sig_len,
+                                   key->hmac_key, key->hmac_key_len, alg);
+        }
+        break;
+
+    default:
+        break;
+    }
+
+    return -1;
+}
+
+
+/* ================================================================
  * Public API
  * ================================================================ */
 
 int
 ngx_auth_jwt_jws_verify(const char *token, unsigned int payload_len,
-    ngx_auth_jwt_jwks_keyset_t *keyset, const char *alg, const char *kid)
+    ngx_auth_jwt_jwks_keyset_t *keyset, const char *alg, const char *kid,
+    int *kid_tried)
 {
     const char *sig_start;
     size_t token_len, sig_b64_len, sig_len;
     unsigned char *sig = NULL;
     size_t i, tried;
-    int rc;
+    int rc, has_kid;
+
+    if (kid_tried != NULL) {
+        *kid_tried = 0;
+    }
 
     if (token == NULL || keyset == NULL || alg == NULL) {
         return EINVAL;
@@ -535,7 +599,7 @@ ngx_auth_jwt_jws_verify(const char *token, unsigned int payload_len,
         return EINVAL;
     }
 
-    /* Try each key from the keyset */
+    has_kid = (kid != NULL && kid[0] != '\0');
     tried = 0;
 
     /*
