@@ -18,8 +18,8 @@ get_js_json(const json_t *js, const char *key,
     if (key && strlen(key) && js_val != NULL) {
         json_t *js_obj = NULL;
 
-        if (delim) {
-            char *p = NULL, *s = NULL, *var = NULL;
+        if (delim && delim[0] != '\0') {
+            char *s = NULL, *var = NULL, *seg = NULL;
             size_t delim_len = strlen(delim), quote_len = 0;
 
             var = strdup(key);
@@ -33,36 +33,51 @@ get_js_json(const json_t *js, const char *key,
                 quote_len = strlen(quote);
             }
 
-            do {
-                if (s && quote && strncmp(s, quote, quote_len) == 0) {
+            while (s != NULL && *s != '\0') {
+                if (quote_len > 0 && strncmp(s, quote, quote_len) == 0) {
+                    /* Quoted segment: find closing quote */
+                    char *end;
+
                     s += quote_len;
-                    p = strsep(&s, quote);
-                    if (p && strlen(p)) {
-                        if (s) {
-                            s += quote_len - 1;
-                        }
-                        js_obj = json_object_get(js_val, p);
-                        if (js_obj == NULL) {
-                            js_val = NULL;
-                            break;
-                        }
-                        js_val = js_obj;
+                    end = strstr(s, quote);
+                    if (end == NULL) {
+                        js_val = NULL;
+                        break;
+                    }
+                    *end = '\0';
+                    seg = s;
+                    s = end + quote_len;
+
+                    /* Skip delimiter after closing quote */
+                    if (strncmp(s, delim, delim_len) == 0) {
+                        s += delim_len;
+                    } else if (*s != '\0') {
+                        js_val = NULL;
+                        break;
+                    }
+                } else {
+                    /* Unquoted segment: find next delimiter */
+                    char *end = strstr(s, delim);
+
+                    if (end != NULL) {
+                        *end = '\0';
+                        seg = s;
+                        s = end + delim_len;
+                    } else {
+                        seg = s;
+                        s = NULL;
                     }
                 }
 
-                p = strsep(&s, delim);
-                if (p && strlen(p)) {
-                    if (s) {
-                        s += delim_len - 1;
-                    }
-                    js_obj = json_object_get(js_val, p);
+                if (seg[0] != '\0') {
+                    js_obj = json_object_get(js_val, seg);
                     if (js_obj == NULL) {
                         js_val = NULL;
                         break;
                     }
                     js_val = js_obj;
                 }
-            } while (p);
+            }
 
             free(var);
         }else {
