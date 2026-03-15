@@ -5,6 +5,7 @@
 #ifndef NGX_AUTH_JWT_JWKS_H
 #define NGX_AUTH_JWT_JWKS_H
 
+#include <ngx_config.h>
 #include <ngx_core.h>
 #include <openssl/evp.h>
 #include <stddef.h>

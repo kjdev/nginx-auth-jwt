@@ -5,6 +5,8 @@
  * JWT decode layer (pool-based, replaces libjwt jwt_parse)
  */
 
+#include "ngx_auth_jwt_decode.h"
+
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,8 +14,6 @@
 #include <openssl/bio.h>
 #include <openssl/crypto.h>
 #include <openssl/evp.h>
-
-#include "ngx_auth_jwt_decode.h"
 
 
 static char *

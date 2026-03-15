@@ -10,6 +10,8 @@
  * Uses malloc for allocation (Phase 1).
  */
 
+#include "ngx_auth_jwt_jws.h"
+
 #include <errno.h>
 #include <limits.h>
 #include <stdlib.h>
@@ -21,8 +23,6 @@
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 #include <openssl/rsa.h>
-
-#include "ngx_auth_jwt_jws.h"
 
 
 /* ================================================================

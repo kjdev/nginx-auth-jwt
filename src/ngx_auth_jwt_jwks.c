@@ -10,6 +10,8 @@
  * Supports OpenSSL 1.1.1+ and 3.0+.
  */
 
+#include "ngx_auth_jwt_jwks.h"
+
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,8 +31,6 @@
 #include <openssl/core_names.h>
 #include <openssl/param_build.h>
 #endif
-
-#include "ngx_auth_jwt_jwks.h"
 
 
 /* ================================================================

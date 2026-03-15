@@ -6,6 +6,7 @@
 #ifndef NGX_AUTH_JWT_DECODE_H
 #define NGX_AUTH_JWT_DECODE_H
 
+#include <ngx_config.h>
 #include <ngx_core.h>
 #include <jansson.h>
 
