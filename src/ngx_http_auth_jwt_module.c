@@ -1433,6 +1433,11 @@ ngx_http_auth_jwt_exit_process(ngx_cycle_t *cycle)
     }
 }
 
+/*
+ * Explicit cleanup for ctx resources. Pool cleanup handlers also
+ * release these, but explicit free ensures deterministic ordering.
+ * All free functions are idempotent (NULL-check + NULL-set).
+ */
 static void
 ngx_http_auth_jwt_cleanup(void *data)
 {
