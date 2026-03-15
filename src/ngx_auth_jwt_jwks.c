@@ -5,7 +5,7 @@
  * JWKS (JSON Web Key Set) parser for nginx-auth-jwt module
  *
  * Converts JWK entries to OpenSSL EVP_PKEY objects (RSA/EC/OKP)
- * or raw key bytes (HMAC). Uses malloc for allocation (Phase 1).
+ * or raw key bytes (HMAC). Uses ngx_pool_t for allocation.
  *
  * Supports OpenSSL 1.1.1+ and 3.0+.
  */
@@ -113,15 +113,49 @@ jwks_base64url_decode(const char *src, size_t src_len, size_t *out_len)
 
 
 /* ================================================================
+ * Pool cleanup handler for keyset resources
+ * ================================================================ */
+
+static void
+jwks_keyset_cleanup(void *data)
+{
+    ngx_auth_jwt_jwks_keyset_t *keyset = data;
+    size_t i;
+    ngx_auth_jwt_jwks_key_t *key;
+
+    if (keyset == NULL || keyset->keys == NULL) {
+        return;
+    }
+
+    for (i = 0; i < keyset->nkeys; i++) {
+        key = &keyset->keys[i];
+
+        if (key->pkey != NULL) {
+            EVP_PKEY_free(key->pkey);
+            key->pkey = NULL;
+        }
+        if (key->hmac_key != NULL) {
+            OPENSSL_cleanse(key->hmac_key, key->hmac_key_len);
+            key->hmac_key = NULL;
+        }
+    }
+
+    keyset->keys = NULL;
+    keyset->nkeys = 0;
+}
+
+
+/* ================================================================
  * Keyset allocation helpers
  * ================================================================ */
 
 static ngx_auth_jwt_jwks_keyset_t *
-jwks_keyset_create(size_t initial_capacity)
+jwks_keyset_create(ngx_pool_t *pool, size_t initial_capacity)
 {
     ngx_auth_jwt_jwks_keyset_t *keyset;
+    ngx_pool_cleanup_t *cln;
 
-    keyset = calloc(1, sizeof(ngx_auth_jwt_jwks_keyset_t));
+    keyset = ngx_pcalloc(pool, sizeof(ngx_auth_jwt_jwks_keyset_t));
     if (keyset == NULL) {
         return NULL;
     }
@@ -130,14 +164,23 @@ jwks_keyset_create(size_t initial_capacity)
         initial_capacity = 4;
     }
 
-    keyset->keys = calloc(initial_capacity, sizeof(ngx_auth_jwt_jwks_key_t));
+    keyset->keys = ngx_pcalloc(pool,
+                               initial_capacity
+                               * sizeof(ngx_auth_jwt_jwks_key_t));
     if (keyset->keys == NULL) {
-        free(keyset);
         return NULL;
     }
 
     keyset->nkeys = 0;
     keyset->capacity = initial_capacity;
+    keyset->pool = pool;
+
+    cln = ngx_pool_cleanup_add(pool, 0);
+    if (cln == NULL) {
+        return NULL;
+    }
+    cln->handler = jwks_keyset_cleanup;
+    cln->data = keyset;
 
     return keyset;
 }
@@ -160,19 +203,19 @@ jwks_keyset_push(ngx_auth_jwt_jwks_keyset_t *keyset)
         if (new_cap > NGX_AUTH_JWT_MAX_JWKS_KEYS) {
             new_cap = NGX_AUTH_JWT_MAX_JWKS_KEYS;
         }
-        new_keys = realloc(keyset->keys,
-                           new_cap * sizeof(ngx_auth_jwt_jwks_key_t));
+        new_keys = ngx_pcalloc(keyset->pool,
+                               new_cap * sizeof(ngx_auth_jwt_jwks_key_t));
         if (new_keys == NULL) {
             return NULL;
         }
-        memset(new_keys + keyset->capacity, 0,
-               (new_cap - keyset->capacity) * sizeof(ngx_auth_jwt_jwks_key_t));
+        ngx_memcpy(new_keys, keyset->keys,
+                   keyset->nkeys * sizeof(ngx_auth_jwt_jwks_key_t));
         keyset->keys = new_keys;
         keyset->capacity = new_cap;
     }
 
     key = &keyset->keys[keyset->nkeys];
-    memset(key, 0, sizeof(ngx_auth_jwt_jwks_key_t));
+    ngx_memzero(key, sizeof(ngx_auth_jwt_jwks_key_t));
     keyset->nkeys++;
 
     return key;
@@ -180,7 +223,7 @@ jwks_keyset_push(ngx_auth_jwt_jwks_keyset_t *keyset)
 
 
 static char *
-jwks_strdup(const char *s)
+jwks_strdup(ngx_pool_t *pool, const char *s)
 {
     size_t len;
     char *dup;
@@ -190,11 +233,11 @@ jwks_strdup(const char *s)
     }
 
     len = strlen(s);
-    dup = malloc(len + 1);
+    dup = ngx_pnalloc(pool, len + 1);
     if (dup == NULL) {
         return NULL;
     }
-    memcpy(dup, s, len + 1);
+    ngx_memcpy(dup, s, len + 1);
 
     return dup;
 }
@@ -652,6 +695,31 @@ jwks_extract_hmac_key(json_t *jwk, unsigned char **key_out, size_t *key_len)
 
 
 /* ================================================================
+ * Helper: copy HMAC key from malloc buffer to pool
+ * ================================================================ */
+
+static unsigned char *
+jwks_hmac_key_to_pool(ngx_pool_t *pool, unsigned char *src, size_t len)
+{
+    unsigned char *dst;
+
+    dst = ngx_pnalloc(pool, len);
+    if (dst == NULL) {
+        OPENSSL_cleanse(src, len);
+        free(src);
+        return NULL;
+    }
+    ngx_memcpy(dst, src, len);
+
+    /* cleanse and free the original malloc buffer */
+    OPENSSL_cleanse(src, len);
+    free(src);
+
+    return dst;
+}
+
+
+/* ================================================================
  * Helper: check if "use" is "enc" (encryption key)
  * ================================================================ */
 
@@ -676,23 +744,20 @@ jwks_is_enc_key(json_t *jwk)
 static void
 jwks_clear_metadata(ngx_auth_jwt_jwks_key_t *key)
 {
-    free(key->kid);
     key->kid = NULL;
-    free(key->alg);
     key->alg = NULL;
-    free(key->crv);
     key->crv = NULL;
 }
 
 
 static int
-jwks_copy_metadata(json_t *jwk, ngx_auth_jwt_jwks_key_t *key)
+jwks_copy_metadata(ngx_pool_t *pool, json_t *jwk, ngx_auth_jwt_jwks_key_t *key)
 {
     const char *val;
 
     val = json_string_value(json_object_get(jwk, "kid"));
     if (val != NULL) {
-        key->kid = jwks_strdup(val);
+        key->kid = jwks_strdup(pool, val);
         if (key->kid == NULL) {
             goto fail;
         }
@@ -700,7 +765,7 @@ jwks_copy_metadata(json_t *jwk, ngx_auth_jwt_jwks_key_t *key)
 
     val = json_string_value(json_object_get(jwk, "alg"));
     if (val != NULL) {
-        key->alg = jwks_strdup(val);
+        key->alg = jwks_strdup(pool, val);
         if (key->alg == NULL) {
             goto fail;
         }
@@ -708,7 +773,7 @@ jwks_copy_metadata(json_t *jwk, ngx_auth_jwt_jwks_key_t *key)
 
     val = json_string_value(json_object_get(jwk, "crv"));
     if (val != NULL) {
-        key->crv = jwks_strdup(val);
+        key->crv = jwks_strdup(pool, val);
         if (key->crv == NULL) {
             goto fail;
         }
@@ -727,7 +792,7 @@ fail:
  * ================================================================ */
 
 ngx_auth_jwt_jwks_keyset_t *
-ngx_auth_jwt_jwks_parse(const char *json_str, size_t len)
+ngx_auth_jwt_jwks_parse(ngx_pool_t *pool, const char *json_str, size_t len)
 {
     json_t *root = NULL, *keys_array, *jwk;
     json_error_t err;
@@ -761,7 +826,7 @@ ngx_auth_jwt_jwks_parse(const char *json_str, size_t len)
         return NULL;
     }
 
-    keyset = jwks_keyset_create(array_size > 0 ? array_size : 1);
+    keyset = jwks_keyset_create(pool, array_size > 0 ? array_size : 1);
     if (keyset == NULL) {
         json_decref(root);
         return NULL;
@@ -790,7 +855,7 @@ ngx_auth_jwt_jwks_parse(const char *json_str, size_t len)
             return NULL;
         }
 
-        if (jwks_copy_metadata(jwk, key) != 0) {
+        if (jwks_copy_metadata(pool, jwk, key) != 0) {
             keyset->nkeys--;
             ngx_auth_jwt_jwks_free(keyset);
             json_decref(root);
@@ -822,14 +887,22 @@ ngx_auth_jwt_jwks_parse(const char *json_str, size_t len)
                 continue;
             }
         } else if (strcmp(kty_str, "oct") == 0) {
+            unsigned char *hmac_buf;
+            size_t hmac_len;
+
             key->kty = NGX_AUTH_JWT_JWK_HMAC;
-            if (jwks_extract_hmac_key(jwk, &key->hmac_key,
-                                      &key->hmac_key_len) != 0)
-            {
+            if (jwks_extract_hmac_key(jwk, &hmac_buf, &hmac_len) != 0) {
                 jwks_clear_metadata(key);
                 keyset->nkeys--;
                 continue;
             }
+            key->hmac_key = jwks_hmac_key_to_pool(pool, hmac_buf, hmac_len);
+            if (key->hmac_key == NULL) {
+                jwks_clear_metadata(key);
+                keyset->nkeys--;
+                continue;
+            }
+            key->hmac_key_len = hmac_len;
         } else {
             jwks_clear_metadata(key);
             keyset->nkeys--;
@@ -905,7 +978,8 @@ jwks_is_pem_string(const char *value)
 
 
 ngx_auth_jwt_jwks_keyset_t *
-ngx_auth_jwt_jwks_parse_keyval(const char *json_str, size_t len)
+ngx_auth_jwt_jwks_parse_keyval(ngx_pool_t *pool,
+    const char *json_str, size_t len)
 {
     json_t *root = NULL;
     json_error_t err;
@@ -936,7 +1010,7 @@ ngx_auth_jwt_jwks_parse_keyval(const char *json_str, size_t len)
         return NULL;
     }
 
-    keyset = jwks_keyset_create(json_object_size(root));
+    keyset = jwks_keyset_create(pool, json_object_size(root));
     if (keyset == NULL) {
         json_decref(root);
         return NULL;
@@ -959,7 +1033,7 @@ ngx_auth_jwt_jwks_parse_keyval(const char *json_str, size_t len)
             return NULL;
         }
 
-        key->kid = jwks_strdup(kid);
+        key->kid = jwks_strdup(pool, kid);
         if (key->kid == NULL) {
             keyset->nkeys--;
             iter = json_object_iter_next(root, iter);
@@ -1001,7 +1075,7 @@ ngx_auth_jwt_jwks_parse_keyval(const char *json_str, size_t len)
                 key->kty = NGX_AUTH_JWT_JWK_EC;
                 crv_name = jwks_get_ec_crv(pkey);
                 if (crv_name != NULL) {
-                    key->crv = jwks_strdup(crv_name);
+                    key->crv = jwks_strdup(pool, crv_name);
                 }
             } else if (EVP_PKEY_is_a(pkey, "ED25519")
                        || EVP_PKEY_is_a(pkey, "ED448"))
@@ -1021,7 +1095,7 @@ ngx_auth_jwt_jwks_parse_keyval(const char *json_str, size_t len)
                     key->kty = NGX_AUTH_JWT_JWK_EC;
                     crv_name = jwks_get_ec_crv(pkey);
                     if (crv_name != NULL) {
-                        key->crv = jwks_strdup(crv_name);
+                        key->crv = jwks_strdup(pool, crv_name);
                     }
                 } else if (pkey_id == EVP_PKEY_ED25519
                            || pkey_id == EVP_PKEY_ED448)
@@ -1047,15 +1121,14 @@ ngx_auth_jwt_jwks_parse_keyval(const char *json_str, size_t len)
             }
 
             key->kty = NGX_AUTH_JWT_JWK_HMAC;
-            key->hmac_key = malloc(raw_len);
+            key->hmac_key = ngx_pnalloc(pool, raw_len);
             if (key->hmac_key == NULL) {
-                free(key->kid);
                 key->kid = NULL;
                 keyset->nkeys--;
                 iter = json_object_iter_next(root, iter);
                 continue;
             }
-            memcpy(key->hmac_key, raw, raw_len);
+            ngx_memcpy(key->hmac_key, raw, raw_len);
             key->hmac_key_len = raw_len;
         }
 
@@ -1072,7 +1145,7 @@ ngx_auth_jwt_jwks_parse_keyval(const char *json_str, size_t len)
  * ================================================================ */
 
 ngx_auth_jwt_jwks_keyset_t *
-ngx_auth_jwt_jwks_load_file(const char *path, int is_jwks)
+ngx_auth_jwt_jwks_load_file(ngx_pool_t *pool, const char *path, int is_jwks)
 {
     FILE *fp;
     char *buf;
@@ -1118,9 +1191,9 @@ ngx_auth_jwt_jwks_load_file(const char *path, int is_jwks)
     buf[nread] = '\0';
 
     if (is_jwks) {
-        keyset = ngx_auth_jwt_jwks_parse(buf, nread);
+        keyset = ngx_auth_jwt_jwks_parse(pool, buf, nread);
     } else {
-        keyset = ngx_auth_jwt_jwks_parse_keyval(buf, nread);
+        keyset = ngx_auth_jwt_jwks_parse_keyval(pool, buf, nread);
     }
 
     free(buf);
@@ -1133,9 +1206,9 @@ ngx_auth_jwt_jwks_load_file(const char *path, int is_jwks)
  * ================================================================ */
 
 ngx_auth_jwt_jwks_keyset_t *
-ngx_auth_jwt_jwks_create(void)
+ngx_auth_jwt_jwks_create(ngx_pool_t *pool)
 {
-    return jwks_keyset_create(4);
+    return jwks_keyset_create(pool, 4);
 }
 
 
@@ -1165,9 +1238,9 @@ ngx_auth_jwt_jwks_append(ngx_auth_jwt_jwks_keyset_t *dst,
         }
 
         dk->kty = sk->kty;
-        dk->kid = jwks_strdup(sk->kid);
-        dk->alg = jwks_strdup(sk->alg);
-        dk->crv = jwks_strdup(sk->crv);
+        dk->kid = jwks_strdup(dst->pool, sk->kid);
+        dk->alg = jwks_strdup(dst->pool, sk->alg);
+        dk->crv = jwks_strdup(dst->pool, sk->crv);
 
         if ((sk->kid != NULL && dk->kid == NULL)
             || (sk->alg != NULL && dk->alg == NULL)
@@ -1184,11 +1257,11 @@ ngx_auth_jwt_jwks_append(ngx_auth_jwt_jwks_keyset_t *dst,
         }
 
         if (sk->hmac_key != NULL && sk->hmac_key_len > 0) {
-            dk->hmac_key = malloc(sk->hmac_key_len);
+            dk->hmac_key = ngx_pnalloc(dst->pool, sk->hmac_key_len);
             if (dk->hmac_key == NULL) {
                 goto rollback;
             }
-            memcpy(dk->hmac_key, sk->hmac_key, sk->hmac_key_len);
+            ngx_memcpy(dk->hmac_key, sk->hmac_key, sk->hmac_key_len);
             dk->hmac_key_len = sk->hmac_key_len;
         }
     }
@@ -1196,16 +1269,16 @@ ngx_auth_jwt_jwks_append(ngx_auth_jwt_jwks_keyset_t *dst,
     return 0;
 
 rollback:
-    /* Undo all appended keys to keep dst in its original state */
     for (i = orig_nkeys; i < dst->nkeys; i++) {
         dk = &dst->keys[i];
 
         if (dk->pkey != NULL) {
             EVP_PKEY_free(dk->pkey);
+            dk->pkey = NULL;
         }
         if (dk->hmac_key != NULL) {
             OPENSSL_cleanse(dk->hmac_key, dk->hmac_key_len);
-            free(dk->hmac_key);
+            dk->hmac_key = NULL;
         }
         jwks_clear_metadata(dk);
     }
@@ -1216,7 +1289,8 @@ rollback:
 
 
 /* ================================================================
- * Public API: free keyset
+ * Public API: free keyset resources (EVP_PKEY + HMAC cleanse)
+ * Memory is managed by pool; this only releases non-pool resources.
  * ================================================================ */
 
 void
@@ -1235,17 +1309,16 @@ ngx_auth_jwt_jwks_free(ngx_auth_jwt_jwks_keyset_t *keyset)
 
             if (key->pkey != NULL) {
                 EVP_PKEY_free(key->pkey);
+                key->pkey = NULL;
             }
             if (key->hmac_key != NULL) {
                 OPENSSL_cleanse(key->hmac_key, key->hmac_key_len);
-                free(key->hmac_key);
+                key->hmac_key = NULL;
             }
-            free(key->kid);
-            free(key->alg);
-            free(key->crv);
         }
-        free(keyset->keys);
+
+        keyset->keys = NULL;
     }
 
-    free(keyset);
+    keyset->nkeys = 0;
 }

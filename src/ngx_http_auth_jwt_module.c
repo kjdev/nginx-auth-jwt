@@ -331,7 +331,8 @@ ngx_http_auth_jwt_strdup(ngx_pool_t *pool, u_char *data, size_t len)
 }
 
 static int
-ngx_http_auth_jwt_key_import_file(ngx_auth_jwt_jwks_keyset_t **keyset,
+ngx_http_auth_jwt_key_import_file(ngx_pool_t *pool,
+    ngx_auth_jwt_jwks_keyset_t **keyset,
     const char *path, const int is_jwks)
 {
     ngx_auth_jwt_jwks_keyset_t *loaded;
@@ -340,7 +341,7 @@ ngx_http_auth_jwt_key_import_file(ngx_auth_jwt_jwks_keyset_t **keyset,
         return 1;
     }
 
-    loaded = ngx_auth_jwt_jwks_load_file(path, is_jwks);
+    loaded = ngx_auth_jwt_jwks_load_file(pool, path, is_jwks);
     if (loaded == NULL) {
         return 1;
     }
@@ -397,7 +398,8 @@ ngx_http_auth_jwt_fill_list_object_by_file(json_t **object, const char *path)
 }
 
 static int
-ngx_http_auth_jwt_key_import_string(ngx_auth_jwt_jwks_keyset_t **keyset,
+ngx_http_auth_jwt_key_import_string(ngx_pool_t *pool,
+    ngx_auth_jwt_jwks_keyset_t **keyset,
     const char *input, const size_t len,
     const int is_jwks)
 {
@@ -411,9 +413,9 @@ ngx_http_auth_jwt_key_import_string(ngx_auth_jwt_jwks_keyset_t **keyset,
     actual_len = (len > 0) ? len : strlen(input);
 
     if (is_jwks) {
-        loaded = ngx_auth_jwt_jwks_parse(input, actual_len);
+        loaded = ngx_auth_jwt_jwks_parse(pool, input, actual_len);
     }else {
-        loaded = ngx_auth_jwt_jwks_parse_keyval(input, actual_len);
+        loaded = ngx_auth_jwt_jwks_parse_keyval(pool, input, actual_len);
     }
 
     if (loaded == NULL) {
@@ -854,7 +856,9 @@ ngx_http_auth_jwt_conf_set_key_file(ngx_conf_t *cf,
         return "failed to allocate file";
     }
 
-    if (ngx_http_auth_jwt_key_import_file(&lcf->key.vars, file, jwks) != 0) {
+    if (ngx_http_auth_jwt_key_import_file(cf->pool, &lcf->key.vars, file,
+                                          jwks) != 0)
+    {
         ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
                            "\"%V\" directive failed to load %s file: \"%s\"",
                            &cmd->name, (jwks ? "jwks" : "key"), file);
@@ -1367,7 +1371,7 @@ ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
         if (conf->key.vars) {
             ngx_auth_jwt_jwks_append(conf->key.vars, prev->key.vars);
         }else {
-            conf->key.vars = ngx_auth_jwt_jwks_create();
+            conf->key.vars = ngx_auth_jwt_jwks_create(cf->pool);
             if (conf->key.vars != NULL) {
                 ngx_auth_jwt_jwks_append(conf->key.vars, prev->key.vars);
             }
@@ -1534,7 +1538,8 @@ ngx_http_auth_jwt_key_request_handler(ngx_http_request_t *r,
 
         len = b->last - b->pos;
 
-        if (ngx_http_auth_jwt_key_import_string(&key_request->ctx->keys,
+        if (ngx_http_auth_jwt_key_import_string(r->pool,
+                                                &key_request->ctx->keys,
                                                 (char *) b->pos, len,
                                                 key_request->jwks) != 0)
         {
@@ -1565,7 +1570,7 @@ ngx_http_auth_jwt_load_keys(ngx_http_request_t *r,
     }
 
     if (cf->key.vars) {
-        ctx->keys = ngx_auth_jwt_jwks_create();
+        ctx->keys = ngx_auth_jwt_jwks_create(r->pool);
         if (ctx->keys != NULL) {
             ngx_auth_jwt_jwks_append(ctx->keys, cf->key.vars);
         }
@@ -1595,7 +1600,7 @@ ngx_http_auth_jwt_load_keys(ngx_http_request_t *r,
                 continue;
             }
 
-            if (ngx_http_auth_jwt_key_import_file(&ctx->keys, file,
+            if (ngx_http_auth_jwt_key_import_file(r->pool, &ctx->keys, file,
                                                   key_file[i].jwks) != 0)
             {
                 ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
