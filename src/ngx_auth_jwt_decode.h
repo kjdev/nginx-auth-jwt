@@ -6,6 +6,7 @@
 #ifndef NGX_AUTH_JWT_DECODE_H
 #define NGX_AUTH_JWT_DECODE_H
 
+#include <ngx_core.h>
 #include <jansson.h>
 
 #define NGX_AUTH_JWT_MAX_TOKEN_LENGTH   16384
@@ -16,10 +17,11 @@ typedef struct {
     json_t       *payload;
     char         *token_copy;
     unsigned int  payload_len;
+    ngx_pool_t   *pool;
 } ngx_auth_jwt_t;
 
-int ngx_auth_jwt_decode(ngx_auth_jwt_t **jwt, const char *token,
-    unsigned int *payload_len);
+int ngx_auth_jwt_decode(ngx_pool_t *pool, ngx_auth_jwt_t **jwt,
+    const char *token, unsigned int *payload_len);
 void ngx_auth_jwt_free(ngx_auth_jwt_t *jwt);
 
 #endif /* NGX_AUTH_JWT_DECODE_H */

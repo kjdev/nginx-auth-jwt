@@ -2172,7 +2172,7 @@ ngx_http_auth_jwt_handler(ngx_http_request_t *r, ngx_int_t phase)
     }
 
     /* parse jwt token */
-    if (ngx_auth_jwt_decode(&ctx->jwt, (char *) ctx->token,
+    if (ngx_auth_jwt_decode(r->pool, &ctx->jwt, (char *) ctx->token,
                             &ctx->payload_len) != 0
         || ctx->jwt == NULL)
     {

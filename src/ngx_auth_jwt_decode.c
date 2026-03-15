@@ -2,7 +2,7 @@
  * Copyright (c) Tatsuya Kamijo
  * Copyright (c) Bengo4.com, Inc.
  *
- * JWT decode layer (malloc-based, replaces libjwt jwt_parse)
+ * JWT decode layer (pool-based, replaces libjwt jwt_parse)
  */
 
 #include <errno.h>
@@ -115,11 +115,37 @@ ngx_auth_jwt_b64url_decode_json(const char *src, size_t src_len)
 }
 
 
+/* Pool cleanup handler for JWT resources */
+static void
+ngx_auth_jwt_cleanup(void *data)
+{
+    ngx_auth_jwt_t *jwt = data;
+
+    if (jwt == NULL) {
+        return;
+    }
+
+    if (jwt->headers != NULL) {
+        json_decref(jwt->headers);
+        jwt->headers = NULL;
+    }
+    if (jwt->payload != NULL) {
+        json_decref(jwt->payload);
+        jwt->payload = NULL;
+    }
+    if (jwt->token_copy != NULL) {
+        OPENSSL_cleanse(jwt->token_copy, strlen(jwt->token_copy));
+        jwt->token_copy = NULL;
+    }
+}
+
+
 int
-ngx_auth_jwt_decode(ngx_auth_jwt_t **jwt, const char *token,
-    unsigned int *payload_len)
+ngx_auth_jwt_decode(ngx_pool_t *pool, ngx_auth_jwt_t **jwt,
+    const char *token, unsigned int *payload_len)
 {
     ngx_auth_jwt_t *new_jwt;
+    ngx_pool_cleanup_t *cln;
     const char *head_start, *body_start, *sig_start, *end;
     size_t token_len, head_len, body_len;
     const char *alg;
@@ -168,10 +194,19 @@ ngx_auth_jwt_decode(ngx_auth_jwt_t **jwt, const char *token,
     }
 
     /* allocate jwt struct */
-    new_jwt = calloc(1, sizeof(ngx_auth_jwt_t));
+    new_jwt = ngx_pcalloc(pool, sizeof(ngx_auth_jwt_t));
     if (new_jwt == NULL) {
         return ENOMEM;
     }
+    new_jwt->pool = pool;
+
+    /* register cleanup handler */
+    cln = ngx_pool_cleanup_add(pool, 0);
+    if (cln == NULL) {
+        return ENOMEM;
+    }
+    cln->handler = ngx_auth_jwt_cleanup;
+    cln->data = new_jwt;
 
     /* decode header */
     new_jwt->headers = ngx_auth_jwt_b64url_decode_json(head_start, head_len);
@@ -199,11 +234,12 @@ ngx_auth_jwt_decode(ngx_auth_jwt_t **jwt, const char *token,
     }
 
     /* store token copy for signature verification */
-    new_jwt->token_copy = strdup(token);
+    new_jwt->token_copy = ngx_pnalloc(pool, token_len + 1);
     if (new_jwt->token_copy == NULL) {
         ngx_auth_jwt_free(new_jwt);
         return ENOMEM;
     }
+    ngx_memcpy(new_jwt->token_copy, token, token_len + 1);
 
     new_jwt->payload_len = (unsigned int) (sig_start - token);
     *payload_len = new_jwt->payload_len;
@@ -220,16 +256,16 @@ ngx_auth_jwt_free(ngx_auth_jwt_t *jwt)
         return;
     }
 
-    if (jwt->headers) {
+    if (jwt->headers != NULL) {
         json_decref(jwt->headers);
+        jwt->headers = NULL;
     }
-    if (jwt->payload) {
+    if (jwt->payload != NULL) {
         json_decref(jwt->payload);
+        jwt->payload = NULL;
     }
-    if (jwt->token_copy) {
+    if (jwt->token_copy != NULL) {
         OPENSSL_cleanse(jwt->token_copy, strlen(jwt->token_copy));
-        free(jwt->token_copy);
+        jwt->token_copy = NULL;
     }
-
-    free(jwt);
 }
