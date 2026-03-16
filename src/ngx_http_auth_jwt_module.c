@@ -103,6 +103,7 @@ typedef struct {
     ngx_auth_jwt_t             *jwt;
     ngx_auth_jwt_jwks_keyset_t *keys;
     ngx_int_t                   status;
+    ngx_flag_t                  reject_request;
 } ngx_http_auth_jwt_ctx_t;
 
 typedef struct {
@@ -1538,6 +1539,20 @@ ngx_http_auth_jwt_key_request_handler(ngx_http_request_t *r,
         b = r->out->buf;
     }
 
+    if (r->headers_out.content_encoding
+        && r->headers_out.content_encoding->value.len > 0)
+    {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                      "auth_jwt: %s subrequest returned compressed response"
+                      " (Content-Encoding: %V), rejecting",
+                      (key_request->jwks ? "JWKS" : "key"),
+                      &r->headers_out.content_encoding->value);
+        key_request->ctx->reject_request = 1;
+        key_request->ctx->status = NGX_HTTP_UNAUTHORIZED;
+        key_request->ctx->done++;
+        return rc;
+    }
+
     if (b != NULL) {
         size_t len;
 
@@ -1796,6 +1811,14 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
             json = 1;
             value.data += 5;
             value.len -= 5;
+        }
+
+        if (value.len > NGX_AUTH_JWT_MAX_EXPECTED_SIZE) {
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                          "auth_jwt: %s requirement value too large"
+                          ": %s (%uz bytes)",
+                          requirement_type, requirement[i].name, value.len);
+            return NGX_ERROR;
         }
 
         jwt_value = jwt_get_json(ctx->jwt, requirement[i].name,
@@ -2114,6 +2137,10 @@ ngx_http_auth_jwt_handler(ngx_http_request_t *r, ngx_int_t phase)
     if (ctx != NULL) {
         if (ctx->done < ctx->subrequest) {
             return NGX_AGAIN;
+        }
+
+        if (ctx->reject_request) {
+            return ngx_http_auth_jwt_http_error();
         }
 
         if (ngx_http_auth_jwt_validate(r, cf, ctx) == NGX_ERROR) {

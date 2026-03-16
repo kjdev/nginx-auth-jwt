@@ -15,6 +15,8 @@
 #define NGX_AUTH_JWT_OPERATOR_IN "in"
 #define NGX_AUTH_JWT_OPERATOR_NIN "nin"
 
+#define NGX_AUTH_JWT_MAX_EXPECTED_SIZE  4096
+
 /*
  * Returns:
  *   NGX_OK       condition met
