@@ -1,5 +1,21 @@
 # Changelog
 
+## [c3a5c95] - 2026-03-18
+
+### Added
+
+- Integrate JQ-like field paths into requirement validation
+- Extend `ngx_http_auth_jwt_requirement_t` with parsed segments
+- Parse JQ paths at config time, resolve at runtime directly from JSON tree
+
+## [ddede12] - 2026-03-18
+
+### Added
+
+- Add JQ-like field path parser (`ngx_auth_jwt_field.h` / `.c`)
+- Support `.key`, `."quoted.key"`, and `[N]` path syntax
+- Two-pass parsing with `ngx_pool_t` memory management
+
 ## [4812dc8] - 2026-03-16
 
 ### Security
@@ -331,6 +347,8 @@
 
 - Initial release with JWT validation, JWKS/keyval key loading, `auth_jwt_claim_set`, `auth_jwt_key_file`, `auth_jwt_key_request`, `auth_jwt_validate_exp`, `auth_jwt_validate_sig`, `auth_jwt_leeway`, `auth_jwt_phase`, and `auth_jwt_allow_nested` directives
 
+[c3a5c95]: https://github.com/kjdev/nginx-auth-jwt/commit/c3a5c95
+[ddede12]: https://github.com/kjdev/nginx-auth-jwt/commit/ddede12
 [4812dc8]: https://github.com/kjdev/nginx-auth-jwt/commit/4812dc8
 [9bf878b]: https://github.com/kjdev/nginx-auth-jwt/commit/9bf878b
 [89b893b]: https://github.com/kjdev/nginx-auth-jwt/commit/89b893b
