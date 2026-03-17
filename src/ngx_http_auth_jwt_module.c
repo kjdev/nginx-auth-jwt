@@ -6,6 +6,7 @@
 #include "ngx_auth_jwt_jwks.h"
 #include "ngx_auth_jwt_jws.h"
 #include "ngx_auth_jwt_claims.h"
+#include "ngx_auth_jwt_field.h"
 #include "ngx_auth_jwt_operator.h"
 
 #define NGX_HTTP_AUTH_JWT_CLAIM_VAR_PREFIX "jwt_claim_"
@@ -107,9 +108,11 @@ typedef struct {
 } ngx_http_auth_jwt_ctx_t;
 
 typedef struct {
-    ngx_http_complex_value_t *value;
-    char                     *name;
-    char                     *operator;
+    ngx_http_complex_value_t     *value;
+    char                         *name;
+    char                         *operator;
+    ngx_auth_jwt_field_segment_t *segments;
+    size_t                        nsegments;
 } ngx_http_auth_jwt_requirement_t;
 
 typedef struct {
@@ -902,6 +905,29 @@ ngx_http_auth_jwt_conf_set_requirement(ngx_conf_t *cf,
         requirement->name = (char *) ngx_http_auth_jwt_strdup(cf->pool,
                                                               value[1].data,
                                                               value[1].len);
+        if (requirement->name == NULL) {
+            return "failed to allocate item for require name";
+        }
+        requirement->segments = NULL;
+        requirement->nsegments = 0;
+
+        if (ngx_auth_jwt_field_is_jq_path((char *) value[1].data,
+                                          value[1].len))
+        {
+            if (ngx_auth_jwt_field_parse(cf->pool,
+                                         (char *) value[1].data, value[1].len,
+                                         &requirement->segments,
+                                         &requirement->nsegments) != NGX_OK)
+            {
+                return "invalid JQ-like field path syntax";
+            }
+
+            if (requirement->nsegments == 1
+                && requirement->segments[0].type == NGX_AUTH_JWT_FIELD_KEY)
+            {
+                requirement->name = requirement->segments[0].u.key.name;
+            }
+        }
     }else {
         return "first argument should not be empty";
     }
@@ -1821,21 +1847,55 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
             return NGX_ERROR;
         }
 
-        jwt_value = jwt_get_json(ctx->jwt, requirement[i].name,
-                                 cf->nested.delimiter, cf->nested.quote);
-        if (jwt_value == NULL) {
-            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                          "auth_jwt: rejected due to missing %s: %s",
-                          requirement_type, requirement[i].name);
-            return NGX_ERROR;
-        }
-        jwt_value_json = json_loads(jwt_value, JSON_DECODE_ANY, NULL);
-        if (jwt_value_json == NULL) {
-            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                          "auth_jwt: failed to json load jwt %s: %s",
-                          requirement_type, requirement[i].name);
-            free(jwt_value);
-            return NGX_ERROR;
+        if (requirement[i].segments != NULL) {
+            json_t *root, *resolved;
+
+            root = (jwt_get_json == ngx_auth_jwt_claims_get_grants_json)
+                   ? ctx->jwt->payload : ctx->jwt->headers;
+            resolved = ngx_auth_jwt_field_resolve(root,
+                                                  requirement[i].segments,
+                                                  requirement[i].nsegments);
+            if (resolved == NULL) {
+                ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                              "auth_jwt: rejected due to missing %s: %s",
+                              requirement_type, requirement[i].name);
+                return NGX_ERROR;
+            }
+
+            jwt_value_json = json_deep_copy(resolved);
+            if (jwt_value_json == NULL) {
+                ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                              "auth_jwt: failed to copy jwt %s: %s",
+                              requirement_type, requirement[i].name);
+                return NGX_ERROR;
+            }
+            jwt_value = json_dumps(jwt_value_json,
+                                   JSON_SORT_KEYS | JSON_COMPACT
+                                   | JSON_ENCODE_ANY);
+            if (jwt_value == NULL) {
+                ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                              "auth_jwt: failed to dump jwt %s: %s",
+                              requirement_type, requirement[i].name);
+                json_delete(jwt_value_json);
+                return NGX_ERROR;
+            }
+        } else {
+            jwt_value = jwt_get_json(ctx->jwt, requirement[i].name,
+                                     cf->nested.delimiter, cf->nested.quote);
+            if (jwt_value == NULL) {
+                ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                              "auth_jwt: rejected due to missing %s: %s",
+                              requirement_type, requirement[i].name);
+                return NGX_ERROR;
+            }
+            jwt_value_json = json_loads(jwt_value, JSON_DECODE_ANY, NULL);
+            if (jwt_value_json == NULL) {
+                ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                              "auth_jwt: failed to json load jwt %s: %s",
+                              requirement_type, requirement[i].name);
+                free(jwt_value);
+                return NGX_ERROR;
+            }
         }
 
         if (!json) {
