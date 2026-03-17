@@ -8,6 +8,7 @@ ngx_module_srcs="$ngx_addon_dir/src/ngx_auth_jwt_decode.c \
                  $ngx_addon_dir/src/ngx_auth_jwt_jwks.c \
                  $ngx_addon_dir/src/ngx_auth_jwt_jws.c \
                  $ngx_addon_dir/src/ngx_auth_jwt_claims.c \
+                 $ngx_addon_dir/src/ngx_auth_jwt_field.c \
                  $ngx_addon_dir/src/ngx_auth_jwt_operator.c \
                  $ngx_addon_dir/src/ngx_http_auth_jwt_module.c"
 ngx_module_deps=
