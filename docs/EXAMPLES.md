@@ -232,6 +232,56 @@ http {
 }
 ```
 
+## JQ-like Field Paths
+
+Access nested JWT claims and arrays using JQ-like path syntax. No `auth_jwt_allow_nested` directive is needed.
+
+### Nested Object Access
+
+```nginx
+# JWT payload: {"address": {"city": "Tokyo", "zip": "100-0001"}}
+location /api {
+    auth_jwt "" token=$cookie_token;
+    auth_jwt_key_file /etc/nginx/jwks.json;
+    auth_jwt_require_claim .address.city eq Tokyo;
+}
+```
+
+### Array Index Access
+
+```nginx
+# JWT payload: {"roles": ["admin", "user"], "groups": [{"name": "engineering"}]}
+location /admin {
+    auth_jwt "" token=$cookie_token;
+    auth_jwt_key_file /etc/nginx/jwks.json;
+    auth_jwt_require_claim .roles[0] eq admin;
+    auth_jwt_require_claim .groups[0].name eq engineering;
+}
+```
+
+### Quoted Keys (Keys Containing Dots)
+
+```nginx
+# JWT payload: {"dotted.key": "value", "nested": {"dotted.child": "nested_value"}}
+location /dotted {
+    auth_jwt "" token=$cookie_token;
+    auth_jwt_key_file /etc/nginx/jwks.json;
+    auth_jwt_require_claim ."dotted.key" eq value;
+    auth_jwt_require_claim .nested."dotted.child" eq nested_value;
+}
+```
+
+### Header Access with JQ Paths
+
+```nginx
+# JWT header: {"meta": {"version": "2.0"}}
+location /versioned {
+    auth_jwt "" token=$cookie_token;
+    auth_jwt_key_file /etc/nginx/jwks.json;
+    auth_jwt_require_header .meta.version eq 2.0;
+}
+```
+
 ## Related Documentation
 
 - [README.md](../README.md): Module overview and quick start

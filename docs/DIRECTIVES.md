@@ -299,6 +299,40 @@ http {
 }
 ```
 
+#### JQ-like Field Paths
+
+When `claim_name` (or `header_name`) begins with `.` or `[`, JQ-like field path syntax is used. This enables intuitive access to nested objects and arrays **without** requiring `auth_jwt_allow_nested`.
+
+| Syntax | Description | Example |
+|--------|-------------|---------|
+| `.key` | Object key access | `.sub`, `.address.city` |
+| `."quoted.key"` | Quoted key (for keys containing dots) | `."dotted.key"` |
+| `[N]` | Array index access | `.roles[0]`, `.groups[1].name` |
+
+```nginx
+# Nested object access
+auth_jwt_require_claim .address.city eq Tokyo;
+
+# Array index access
+auth_jwt_require_claim .roles[0] eq admin;
+
+# Nested object + array
+auth_jwt_require_claim .groups[0].name eq engineering;
+
+# Quoted key (key contains dot)
+auth_jwt_require_claim ."dotted.key" eq some_value;
+
+# Nested array
+auth_jwt_require_claim .matrix[0][1] eq json=2;
+
+# Header access
+auth_jwt_require_header .meta.version eq 2.0;
+```
+
+JQ-like paths and delimiter-based paths ([auth_jwt_allow_nested](#auth_jwt_allow_nested)) can coexist in the same configuration.
+
+Invalid JQ-like path syntax is detected at nginx startup as a configuration error.
+
 #### Operators
 
 The following operators are available for use with `auth_jwt_require_claim` and `auth_jwt_require_header`:
@@ -342,6 +376,8 @@ Context: http, server, location
 ```
 
 Enables access to nested claims and headers in the JWT token using a delimiter-based path syntax.
+
+> **Note:** For an alternative approach that supports array indexing, see [JQ-like Field Paths](#jq-like-field-paths) in the `auth_jwt_require_claim` section.
 
 - `delimiter` — nesting delimiter character (default: `.`)
 - `quote` — quote character for keys that contain the delimiter (default: `"`)

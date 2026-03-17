@@ -85,7 +85,7 @@ This module provides the following directives. See [DIRECTIVES.md](docs/DIRECTIV
 | `auth_jwt_revocation_list_sub` | Specify sub claim revocation list file |
 | `auth_jwt_revocation_list_kid` | Specify kid header revocation list file |
 | `auth_jwt_require` | Specify additional variable checks |
-| `auth_jwt_require_claim` | Validate JWT claims with operators |
+| `auth_jwt_require_claim` | Validate JWT claims with operators ([JQ-like paths](docs/DIRECTIVES.md#jq-like-field-paths) supported) |
 | `auth_jwt_require_header` | Validate JOSE headers with operators |
 | `auth_jwt_allow_nested` | Enable nested claim/header access |
 
