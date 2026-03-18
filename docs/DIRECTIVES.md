@@ -293,7 +293,7 @@ http {
       auth_jwt_require_claim jti        eq 3949117906;
       auth_jwt_require_claim iat        eq json=1697461112;
       auth_jwt_require_claim iat        lt $expected_iat;
-      auth_jwt_require_claim roles intersect $required_jwt_roles;
+      auth_jwt_require_claim roles any $required_jwt_roles;
     }
   }
 }
@@ -337,18 +337,26 @@ Invalid JQ-like path syntax is detected at nginx startup as a configuration erro
 
 The following operators are available for use with `auth_jwt_require_claim` and `auth_jwt_require_header`:
 
-| Operator | Description |
-|----------|-------------|
-| `eq` | Equal |
-| `ne` | Not equal |
-| `gt` | Greater than |
-| `ge` | Greater than or equal |
-| `lt` | Less than |
-| `le` | Less than or equal |
-| `intersect` | Has intersection (arrays share at least one element) |
-| `nintersect` | Has no intersection |
-| `in` | Value is in array |
-| `nin` | Value is not in array |
+| Operator | Description | Negation |
+|----------|-------------|----------|
+| `eq` | Equal | `!eq` |
+| `gt` | Greater than | `!gt` |
+| `ge` | Greater than or equal | `!ge` |
+| `lt` | Less than | `!lt` |
+| `le` | Less than or equal | `!le` |
+| `in` | Value is in array or object | `!in` |
+| `any` | Has intersection (arrays share at least one element) | `!any` |
+
+Any operator can be negated by prefixing it with `!`. For example, `!eq` means "not equal" and `!any` means "has no intersection".
+
+**Backward-compatible aliases:**
+
+| Alias | Equivalent |
+|-------|------------|
+| `ne` | `!eq` |
+| `nin` | `!in` |
+| `intersect` | `any` |
+| `nintersect` | `!any` |
 
 #### Comparison Rules
 
