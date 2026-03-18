@@ -145,6 +145,9 @@ static char *ngx_http_auth_jwt_require_operators[] = {
     NGX_AUTH_JWT_OPERATOR_NINTERSECT,
     NGX_AUTH_JWT_OPERATOR_IN,
     NGX_AUTH_JWT_OPERATOR_NIN,
+#if (NGX_PCRE)
+    NGX_AUTH_JWT_OPERATOR_MATCH,
+#endif
     NULL,
 };
 
@@ -1964,7 +1967,7 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
 
         if (ngx_auth_jwt_operator_validate(
                 requirement[i].operator, jwt_value_json,
-                expected_json) != NGX_OK)
+                expected_json, NULL, r->pool, r->connection->log) != NGX_OK)
         {
             ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
                           "auth_jwt: rejected due to %s %s requirement"

@@ -16,6 +16,10 @@
 
 #include "ngx_auth_jwt_operator.h"
 
+#if (NGX_PCRE)
+#include <ngx_regex.h>
+#endif
+
 #define NGX_AUTH_JWT_MAX_ARRAY_SIZE  1024
 
 
@@ -185,9 +189,76 @@ ngx_auth_jwt_op_negate(ngx_int_t rc)
 }
 
 
+#if (NGX_PCRE)
+static ngx_int_t
+ngx_auth_jwt_op_match(ngx_auth_jwt_json_t *input,
+    ngx_auth_jwt_json_t *requirement, ngx_regex_t *regex,
+    ngx_pool_t *pool, ngx_log_t *log)
+{
+    const char *input_str;
+    size_t input_len;
+    ngx_str_t subject;
+    ngx_int_t rc;
+
+    if (ngx_auth_jwt_json_string(input, &input_str, &input_len) != NGX_OK) {
+        return NGX_ERROR;
+    }
+
+    subject.data = (u_char *) input_str;
+    subject.len = input_len;
+
+    if (regex != NULL) {
+        rc = ngx_regex_exec(regex, &subject, NULL, 0);
+    }else {
+        const char *pattern_str;
+        size_t pattern_len;
+        ngx_regex_compile_t rgc;
+        u_char errstr[NGX_MAX_CONF_ERRSTR];
+
+        if (ngx_auth_jwt_json_string(requirement, &pattern_str,
+                                     &pattern_len) != NGX_OK)
+        {
+            return NGX_ERROR;
+        }
+
+        if (pattern_len > NGX_AUTH_JWT_MAX_REGEX_SIZE) {
+            ngx_log_error(NGX_LOG_ERR, log, 0,
+                          "auth_jwt: regex pattern too large: %uz bytes",
+                          pattern_len);
+            return NGX_ERROR;
+        }
+
+        ngx_memzero(&rgc, sizeof(ngx_regex_compile_t));
+        rgc.pattern.data = (u_char *) pattern_str;
+        rgc.pattern.len = pattern_len;
+        rgc.pool = pool;
+        rgc.err.data = errstr;
+        rgc.err.len = NGX_MAX_CONF_ERRSTR;
+
+        if (ngx_regex_compile(&rgc) != NGX_OK) {
+            ngx_log_error(NGX_LOG_ERR, log, 0,
+                          "auth_jwt: regex compile failed: %V", &rgc.err);
+            return NGX_ERROR;
+        }
+
+        rc = ngx_regex_exec(rgc.regex, &subject, NULL, 0);
+    }
+
+    if (rc >= 0) {
+        return NGX_OK;
+    }else if (rc == NGX_REGEX_NO_MATCHED) {
+        return NGX_DECLINED;
+    }
+
+    return NGX_ERROR;
+}
+#endif
+
+
 ngx_int_t
 ngx_auth_jwt_operator_validate(char *op,
-    ngx_auth_jwt_json_t *input, ngx_auth_jwt_json_t *requirement)
+    ngx_auth_jwt_json_t *input, ngx_auth_jwt_json_t *requirement,
+    ngx_regex_t *regex, ngx_pool_t *pool, ngx_log_t *log)
 {
     ngx_flag_t negate = 0;
     char *name;
@@ -234,6 +305,10 @@ ngx_auth_jwt_operator_validate(char *op,
         rc = ngx_auth_jwt_op_any(input, requirement);
     }else if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_IN) == 0) {
         rc = ngx_auth_jwt_op_in(input, requirement);
+#if (NGX_PCRE)
+    }else if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_MATCH) == 0) {
+        rc = ngx_auth_jwt_op_match(input, requirement, regex, pool, log);
+#endif
     }else {
         return NGX_ERROR;
     }

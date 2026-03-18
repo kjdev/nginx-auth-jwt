@@ -15,10 +15,12 @@
 #define NGX_AUTH_JWT_OPERATOR_NINTERSECT "nintersect"
 #define NGX_AUTH_JWT_OPERATOR_IN "in"
 #define NGX_AUTH_JWT_OPERATOR_NIN "nin"
+#define NGX_AUTH_JWT_OPERATOR_MATCH "match"
 
 #define NGX_AUTH_JWT_OPERATOR_NEGATE_PREFIX "!"
 
 #define NGX_AUTH_JWT_MAX_EXPECTED_SIZE  4096
+#define NGX_AUTH_JWT_MAX_REGEX_SIZE     1024
 
 /*
  * Returns:
@@ -27,6 +29,7 @@
  *   NGX_ERROR    internal error (type mismatch, etc.)
  */
 ngx_int_t ngx_auth_jwt_operator_validate(char *op,
-    ngx_auth_jwt_json_t *input, ngx_auth_jwt_json_t *requirement);
+    ngx_auth_jwt_json_t *input, ngx_auth_jwt_json_t *requirement,
+    ngx_regex_t *regex, ngx_pool_t *pool, ngx_log_t *log);
 
 #endif /* NGX_AUTH_JWT_OPERATOR_H */
