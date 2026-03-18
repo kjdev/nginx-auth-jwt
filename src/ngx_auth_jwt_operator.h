@@ -22,6 +22,9 @@
 #define NGX_AUTH_JWT_MAX_EXPECTED_SIZE  4096
 #define NGX_AUTH_JWT_MAX_REGEX_SIZE     1024
 
+#define NGX_AUTH_JWT_REGEX_MATCH_LIMIT        10000
+#define NGX_AUTH_JWT_REGEX_MATCH_LIMIT_DEPTH   5000
+
 /*
  * Returns:
  *   NGX_OK       condition met
@@ -30,6 +33,6 @@
  */
 ngx_int_t ngx_auth_jwt_operator_validate(char *op,
     ngx_auth_jwt_json_t *input, ngx_auth_jwt_json_t *requirement,
-    ngx_regex_t *regex, ngx_pool_t *pool, ngx_log_t *log);
+    void *regex, ngx_pool_t *pool, ngx_log_t *log);
 
 #endif /* NGX_AUTH_JWT_OPERATOR_H */

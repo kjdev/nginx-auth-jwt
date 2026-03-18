@@ -208,8 +208,59 @@ ngx_auth_jwt_op_match(ngx_auth_jwt_json_t *input,
     subject.len = input_len;
 
     if (regex != NULL) {
-        rc = ngx_regex_exec(regex, &subject, NULL, 0);
-    }else {
+#if (NGX_PCRE2)
+        pcre2_match_data *match_data;
+        pcre2_match_context *mctx;
+
+        match_data = pcre2_match_data_create(1, NULL);
+        if (match_data == NULL) {
+            return NGX_ERROR;
+        }
+
+        mctx = pcre2_match_context_create(NULL);
+        if (mctx == NULL) {
+            pcre2_match_data_free(match_data);
+            return NGX_ERROR;
+        }
+
+        pcre2_set_match_limit(mctx, NGX_AUTH_JWT_REGEX_MATCH_LIMIT);
+        pcre2_set_depth_limit(mctx, NGX_AUTH_JWT_REGEX_MATCH_LIMIT_DEPTH);
+
+        rc = pcre2_match(regex, subject.data, subject.len, 0, 0,
+                         match_data, mctx);
+
+        pcre2_match_context_free(mctx);
+        pcre2_match_data_free(match_data);
+
+        if (rc == PCRE2_ERROR_MATCHLIMIT
+            || rc == PCRE2_ERROR_DEPTHLIMIT)
+        {
+            ngx_log_error(NGX_LOG_ERR, log, 0,
+                          "auth_jwt: regex match limit exceeded");
+            return NGX_ERROR;
+        }
+#else
+        pcre_extra extra;
+
+        ngx_memzero(&extra, sizeof(pcre_extra));
+        extra.flags = PCRE_EXTRA_MATCH_LIMIT
+                      | PCRE_EXTRA_MATCH_LIMIT_RECURSION;
+        extra.match_limit = NGX_AUTH_JWT_REGEX_MATCH_LIMIT;
+        extra.match_limit_recursion = NGX_AUTH_JWT_REGEX_MATCH_LIMIT_DEPTH;
+
+        rc = pcre_exec(regex->code, &extra,
+                       (const char *) subject.data, subject.len,
+                       0, 0, NULL, 0);
+
+        if (rc == PCRE_ERROR_MATCHLIMIT
+            || rc == PCRE_ERROR_RECURSIONLIMIT)
+        {
+            ngx_log_error(NGX_LOG_ERR, log, 0,
+                          "auth_jwt: regex match limit exceeded");
+            return NGX_ERROR;
+        }
+#endif
+    } else {
         const char *pattern_str;
         size_t pattern_len;
         ngx_regex_compile_t rgc;
@@ -241,7 +292,64 @@ ngx_auth_jwt_op_match(ngx_auth_jwt_json_t *input,
             return NGX_ERROR;
         }
 
-        rc = ngx_regex_exec(rgc.regex, &subject, NULL, 0);
+#if (NGX_PCRE2)
+        {
+            pcre2_match_data *match_data;
+            pcre2_match_context *mctx;
+
+            match_data = pcre2_match_data_create(1, NULL);
+            if (match_data == NULL) {
+                return NGX_ERROR;
+            }
+
+            mctx = pcre2_match_context_create(NULL);
+            if (mctx == NULL) {
+                pcre2_match_data_free(match_data);
+                return NGX_ERROR;
+            }
+
+            pcre2_set_match_limit(mctx,
+                                  NGX_AUTH_JWT_REGEX_MATCH_LIMIT);
+            pcre2_set_depth_limit(mctx,
+                                  NGX_AUTH_JWT_REGEX_MATCH_LIMIT_DEPTH);
+
+            rc = pcre2_match(rgc.regex, subject.data, subject.len,
+                             0, 0, match_data, mctx);
+
+            pcre2_match_context_free(mctx);
+            pcre2_match_data_free(match_data);
+
+            if (rc == PCRE2_ERROR_MATCHLIMIT
+                || rc == PCRE2_ERROR_DEPTHLIMIT)
+            {
+                ngx_log_error(NGX_LOG_ERR, log, 0,
+                              "auth_jwt: regex match limit exceeded");
+                return NGX_ERROR;
+            }
+        }
+#else
+        {
+            pcre_extra extra;
+
+            ngx_memzero(&extra, sizeof(pcre_extra));
+            extra.flags = PCRE_EXTRA_MATCH_LIMIT
+                          | PCRE_EXTRA_MATCH_LIMIT_RECURSION;
+            extra.match_limit = NGX_AUTH_JWT_REGEX_MATCH_LIMIT;
+            extra.match_limit_recursion = NGX_AUTH_JWT_REGEX_MATCH_LIMIT_DEPTH;
+
+            rc = pcre_exec(rgc.regex->code, &extra,
+                           (const char *) subject.data, subject.len,
+                           0, 0, NULL, 0);
+
+            if (rc == PCRE_ERROR_MATCHLIMIT
+                || rc == PCRE_ERROR_RECURSIONLIMIT)
+            {
+                ngx_log_error(NGX_LOG_ERR, log, 0,
+                              "auth_jwt: regex match limit exceeded");
+                return NGX_ERROR;
+            }
+        }
+#endif
     }
 
     if (rc >= 0) {
@@ -258,7 +366,7 @@ ngx_auth_jwt_op_match(ngx_auth_jwt_json_t *input,
 ngx_int_t
 ngx_auth_jwt_operator_validate(char *op,
     ngx_auth_jwt_json_t *input, ngx_auth_jwt_json_t *requirement,
-    ngx_regex_t *regex, ngx_pool_t *pool, ngx_log_t *log)
+    void *regex, ngx_pool_t *pool, ngx_log_t *log)
 {
     ngx_flag_t negate = 0;
     char *name;
@@ -307,7 +415,8 @@ ngx_auth_jwt_operator_validate(char *op,
         rc = ngx_auth_jwt_op_in(input, requirement);
 #if (NGX_PCRE)
     }else if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_MATCH) == 0) {
-        rc = ngx_auth_jwt_op_match(input, requirement, regex, pool, log);
+        rc = ngx_auth_jwt_op_match(input, requirement, (ngx_regex_t *) regex,
+                                   pool, log);
 #endif
     }else {
         return NGX_ERROR;
