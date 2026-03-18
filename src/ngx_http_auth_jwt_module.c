@@ -140,6 +140,7 @@ static char *ngx_http_auth_jwt_require_operators[] = {
     NGX_AUTH_JWT_OPERATOR_GE,
     NGX_AUTH_JWT_OPERATOR_LT,
     NGX_AUTH_JWT_OPERATOR_LE,
+    NGX_AUTH_JWT_OPERATOR_ANY,
     NGX_AUTH_JWT_OPERATOR_INTERSECT,
     NGX_AUTH_JWT_OPERATOR_NINTERSECT,
     NGX_AUTH_JWT_OPERATOR_IN,
@@ -931,11 +932,21 @@ ngx_http_auth_jwt_conf_set_requirement(ngx_conf_t *cf,
     }else {
         return "first argument should not be empty";
     }
-    if (value[2].len != 0 /* && value[2].data not in ... */) {
+    if (value[2].len != 0) {
         ngx_flag_t invalid_operator = 1;
+        u_char *op_name = value[2].data;
+        size_t op_len = value[2].len;
+
+        /* skip '!' negate prefix for validation */
+        if (op_len > 1 && op_name[0] == '!') {
+            op_name++;
+            op_len--;
+        }
+
         for (int i = 0; ngx_http_auth_jwt_require_operators[i] != NULL; i++) {
-            if (ngx_strncmp(ngx_http_auth_jwt_require_operators[i],
-                            (char *) value[2].data, value[2].len) == 0)
+            if (ngx_strlen(ngx_http_auth_jwt_require_operators[i]) == op_len
+                && ngx_strncmp(ngx_http_auth_jwt_require_operators[i],
+                               (char *) op_name, op_len) == 0)
             {
                 invalid_operator = 0;
                 break;

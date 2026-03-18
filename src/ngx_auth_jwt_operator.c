@@ -9,8 +9,8 @@
  *   NGX_DECLINED condition not met (valid comparison)
  *   NGX_ERROR    internal error (type mismatch, etc.)
  *
- * Negation operators (ne, nin, nintersect) are implemented by
- * calling the positive operator and flipping NGX_OK <-> NGX_DECLINED.
+ * Negation is implemented via '!' prefix (e.g. !eq, !any, !in).
+ * Legacy aliases (ne, nin, nintersect) are mapped to negated forms.
  * NGX_ERROR is never flipped (authorization bypass prevention).
  */
 
@@ -85,7 +85,7 @@ ngx_auth_jwt_op_le(ngx_auth_jwt_json_t *input,
 
 
 static ngx_int_t
-ngx_auth_jwt_op_intersect(ngx_auth_jwt_json_t *input,
+ngx_auth_jwt_op_any(ngx_auth_jwt_json_t *input,
     ngx_auth_jwt_json_t *requirement)
 {
     size_t i, j, input_size, req_size;
@@ -185,39 +185,58 @@ ngx_auth_jwt_op_negate(ngx_int_t rc)
 }
 
 
-#define OPERATOR_IS(op, data) ngx_strcmp(data, \
-                                         NGX_AUTH_JWT_OPERATOR_ ## op) == 0
-
 ngx_int_t
 ngx_auth_jwt_operator_validate(char *op,
     ngx_auth_jwt_json_t *input, ngx_auth_jwt_json_t *requirement)
 {
+    ngx_flag_t negate = 0;
+    char *name;
+    ngx_int_t rc;
+
     if (op == NULL || input == NULL || requirement == NULL) {
         return NGX_ERROR;
     }
 
-    if (OPERATOR_IS(EQ, op)) {
-        return ngx_auth_jwt_op_eq(input, requirement);
-    }else if (OPERATOR_IS(NE, op)) {
-        return ngx_auth_jwt_op_negate(ngx_auth_jwt_op_eq(input, requirement));
-    }else if (OPERATOR_IS(GT, op)) {
-        return ngx_auth_jwt_op_gt(input, requirement);
-    }else if (OPERATOR_IS(GE, op)) {
-        return ngx_auth_jwt_op_ge(input, requirement);
-    }else if (OPERATOR_IS(LT, op)) {
-        return ngx_auth_jwt_op_lt(input, requirement);
-    }else if (OPERATOR_IS(LE, op)) {
-        return ngx_auth_jwt_op_le(input, requirement);
-    }else if (OPERATOR_IS(INTERSECT, op)) {
-        return ngx_auth_jwt_op_intersect(input, requirement);
-    }else if (OPERATOR_IS(NINTERSECT, op)) {
-        return ngx_auth_jwt_op_negate(
-            ngx_auth_jwt_op_intersect(input, requirement));
-    }else if (OPERATOR_IS(IN, op)) {
-        return ngx_auth_jwt_op_in(input, requirement);
-    }else if (OPERATOR_IS(NIN, op)) {
-        return ngx_auth_jwt_op_negate(ngx_auth_jwt_op_in(input, requirement));
+    name = op;
+
+    /* '!' prefix → negate mode */
+    if (name[0] == '!') {
+        negate = 1;
+        name++;
     }
 
-    return NGX_ERROR;
+    /* legacy alias mapping */
+    if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_NE) == 0) {
+        negate = !negate;
+        name = NGX_AUTH_JWT_OPERATOR_EQ;
+    }else if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_NIN) == 0) {
+        negate = !negate;
+        name = NGX_AUTH_JWT_OPERATOR_IN;
+    }else if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_NINTERSECT) == 0) {
+        negate = !negate;
+        name = NGX_AUTH_JWT_OPERATOR_ANY;
+    }else if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_INTERSECT) == 0) {
+        name = NGX_AUTH_JWT_OPERATOR_ANY;
+    }
+
+    /* dispatch */
+    if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_EQ) == 0) {
+        rc = ngx_auth_jwt_op_eq(input, requirement);
+    }else if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_GT) == 0) {
+        rc = ngx_auth_jwt_op_gt(input, requirement);
+    }else if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_GE) == 0) {
+        rc = ngx_auth_jwt_op_ge(input, requirement);
+    }else if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_LT) == 0) {
+        rc = ngx_auth_jwt_op_lt(input, requirement);
+    }else if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_LE) == 0) {
+        rc = ngx_auth_jwt_op_le(input, requirement);
+    }else if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_ANY) == 0) {
+        rc = ngx_auth_jwt_op_any(input, requirement);
+    }else if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_IN) == 0) {
+        rc = ngx_auth_jwt_op_in(input, requirement);
+    }else {
+        return NGX_ERROR;
+    }
+
+    return negate ? ngx_auth_jwt_op_negate(rc) : rc;
 }
