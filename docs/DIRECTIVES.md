@@ -294,6 +294,13 @@ http {
       auth_jwt_require_claim iat        eq json=1697461112;
       auth_jwt_require_claim iat        lt $expected_iat;
       auth_jwt_require_claim roles any $required_jwt_roles;
+
+      # Regular expression match
+      set $email_pattern '"@example\.com"';
+      auth_jwt_require_claim email match $email_pattern;
+
+      # Use \z for end-of-string anchor ($ conflicts with nginx variables)
+      auth_jwt_require_claim sub match '\A[a-f0-9-]+\z';
     }
   }
 }
@@ -346,8 +353,12 @@ The following operators are available for use with `auth_jwt_require_claim` and 
 | `le` | Less than or equal | `!le` |
 | `in` | Value is in array or object | `!in` |
 | `any` | Has intersection (arrays share at least one element) | `!any` |
+| `match` | Regular expression match (PCRE) | `!match` |
 
 Any operator can be negated by prefixing it with `!`. For example, `!eq` means "not equal" and `!any` means "has no intersection".
+
+> **Note:** For the `match` operator, use `\A` and `\z` as anchors instead of `^` and `$`. The `$` character is interpreted as an nginx variable prefix and cannot be used in directive values.
+> **Note:** A PCRE match limit (10,000 steps) is enforced for ReDoS defense. Patterns that cause excessive backtracking will be rejected due to match limit exceeded. Static patterns (literal values) are precompiled at config time for better performance.
 
 **Backward-compatible aliases:**
 

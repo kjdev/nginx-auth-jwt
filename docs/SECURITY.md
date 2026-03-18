@@ -109,6 +109,17 @@ location = /jwks_uri {
 
 Key data fetched via `auth_jwt_key_request` is read entirely into memory within the nginx request processing pipeline. Avoid key endpoints that return excessively large responses.
 
+### Regex Match Limit (ReDoS Defense)
+
+When the `match` operator uses dynamic patterns (variable references), JWT claim values reach the regex engine at request time. To prevent CPU DoS via malicious backtracking patterns (ReDoS), the module enforces PCRE match limits:
+
+- **Match limit**: 10,000 steps (1/1,000th of the PCRE default)
+- **Depth limit**: 5,000 steps
+
+When a limit is exceeded, the match is immediately aborted and the request is rejected (the error log records `auth_jwt: regex match limit exceeded`).
+
+**Note:** Static patterns (literal values) precompiled at config time are not affected by this limit. Only the dynamic pattern (variable reference) execution path is subject to these constraints.
+
 ## Input Validation
 
 ### Claim Comparison Types
