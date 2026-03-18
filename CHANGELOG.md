@@ -1,5 +1,13 @@
 # Changelog
 
+## [b036f63] - 2026-03-18
+
+### Changed
+
+- Rename `intersect` operator to `any` (`intersect` remains as backward-compatible alias)
+- Add unified `!` prefix negation for all operators (e.g. `!eq`, `!any`, `!in`)
+- Map legacy negation aliases: `ne` → `!eq`, `nin` → `!in`, `nintersect` → `!any`
+
 ## [c3a5c95] - 2026-03-18
 
 ### Added
@@ -347,6 +355,7 @@
 
 - Initial release with JWT validation, JWKS/keyval key loading, `auth_jwt_claim_set`, `auth_jwt_key_file`, `auth_jwt_key_request`, `auth_jwt_validate_exp`, `auth_jwt_validate_sig`, `auth_jwt_leeway`, `auth_jwt_phase`, and `auth_jwt_allow_nested` directives
 
+[b036f63]: https://github.com/kjdev/nginx-auth-jwt/commit/b036f63
 [c3a5c95]: https://github.com/kjdev/nginx-auth-jwt/commit/c3a5c95
 [ddede12]: https://github.com/kjdev/nginx-auth-jwt/commit/ddede12
 [4812dc8]: https://github.com/kjdev/nginx-auth-jwt/commit/4812dc8
