@@ -12,7 +12,7 @@ The module supports [JSON Web Signature](https://datatracker.ietf.org/doc/html/r
 - Validate JWT tokens from the Authorization header or custom variables
 - Verify signatures using [JWKS](https://datatracker.ietf.org/doc/html/rfc7517#section-5) or key-value format keys (file or subrequest)
 - Support HMAC, RSA, RSA-PSS, ECDSA, and EdDSA algorithms
-- Validate JWT claims with operators (eq, ne, gt, ge, lt, le, intersect, in, etc.)
+- Validate JWT claims with operators (eq, gt, ge, lt, le, in, any, match, and `!` negation prefix)
 - Validate [JOSE headers](https://datatracker.ietf.org/doc/html/rfc7515#section-4) with the same operators
 - Revocation lists for sub claims and kid headers
 - Access nested claims with configurable delimiters
