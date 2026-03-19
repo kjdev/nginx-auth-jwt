@@ -440,7 +440,7 @@ location / {
   auth_jwt "" token=$test1_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
-  auth_jwt_require $valid_jwt_iss error=500;
+  auth_jwt_require $valid_jwt_iss error=600;
 }
 --- must_die
 
@@ -503,3 +503,104 @@ location / {
   401,
   200
 ]
+
+=== valid error=404
+--- http_config
+include $TEST_NGINX_CONF_DIR/authorized_server.conf;
+map $jwt_claim_iss $valid_jwt_iss {
+  "https://test1.issuer.example.com" 1;
+}
+map $jwt_claim_sub $valid_jwt_sub {
+  "nomatch" 1;
+}
+--- config
+include $TEST_NGINX_CONF_DIR/jwt.conf;
+location / {
+  auth_jwt "" token=$test1_jwt;
+  auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
+  include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
+  auth_jwt_require $valid_jwt_iss $valid_jwt_sub error=404;
+}
+--- request
+GET /
+--- error_code: 404
+--- error_log: auth_jwt: rejected due to $valid_jwt_sub variable invalid
+
+=== valid error=500
+--- http_config
+include $TEST_NGINX_CONF_DIR/authorized_server.conf;
+map $jwt_claim_iss $valid_jwt_iss {
+  "https://test1.issuer.example.com" 1;
+}
+--- config
+include $TEST_NGINX_CONF_DIR/jwt.conf;
+location / {
+  auth_jwt "" token=$test1_jwt;
+  auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
+  include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
+  auth_jwt_require $valid_jwt_iss error=500;
+}
+--- request
+GET /
+--- error_code: 200
+
+=== invalid error=444
+--- http_config
+include $TEST_NGINX_CONF_DIR/authorized_server.conf;
+map $jwt_claim_iss $valid_jwt_iss {
+  "https://test1.issuer.example.com" 1;
+}
+--- config
+include $TEST_NGINX_CONF_DIR/jwt.conf;
+location / {
+  auth_jwt "" token=$test1_jwt;
+  auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
+  include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
+  auth_jwt_require $valid_jwt_iss error=444;
+}
+--- must_die
+
+=== invalid error=499
+--- http_config
+include $TEST_NGINX_CONF_DIR/authorized_server.conf;
+map $jwt_claim_iss $valid_jwt_iss {
+  "https://test1.issuer.example.com" 1;
+}
+--- config
+include $TEST_NGINX_CONF_DIR/jwt.conf;
+location / {
+  auth_jwt "" token=$test1_jwt;
+  auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
+  include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
+  auth_jwt_require $valid_jwt_iss error=499;
+}
+--- must_die
+
+=== invalid error=399
+--- http_config
+include $TEST_NGINX_CONF_DIR/authorized_server.conf;
+map $jwt_claim_iss $valid_jwt_iss {
+  "https://test1.issuer.example.com" 1;
+}
+--- config
+include $TEST_NGINX_CONF_DIR/jwt.conf;
+location / {
+  auth_jwt "" token=$test1_jwt;
+  auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
+  include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
+  auth_jwt_require $valid_jwt_iss error=399;
+}
+--- must_die
+
+=== invalid error= only without variable
+--- http_config
+include $TEST_NGINX_CONF_DIR/authorized_server.conf;
+--- config
+include $TEST_NGINX_CONF_DIR/jwt.conf;
+location / {
+  auth_jwt "" token=$test1_jwt;
+  auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
+  include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
+  auth_jwt_require error=403;
+}
+--- must_die
