@@ -1089,16 +1089,22 @@ ngx_http_auth_jwt_conf_set_require_variable(ngx_conf_t *cf,
         value[n].len -= error_with_len;
 
         lcf->validate.variable.error = ngx_atoi(value[n].data, value[n].len);
-        if (lcf->validate.variable.error != 401
-            && lcf->validate.variable.error != 403)
+        if (lcf->validate.variable.error < 400
+            || lcf->validate.variable.error > 599
+            || lcf->validate.variable.error == 444
+            || lcf->validate.variable.error == 499)
         {
             ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-                               "\"%V\" directive failed to error: \"%V\"",
+                               "\"%V\" directive error code must be 400-599 "
+                               "(excluding 444 and 499): \"%V\"",
                                &cmd->name, &value[n]);
             return NGX_CONF_ERROR;
         }
 
         --n;
+        if (n == 0) {
+            return "at least one variable must be specified";
+        }
     }
 
     for (i = 1; i <= n; i++) {
