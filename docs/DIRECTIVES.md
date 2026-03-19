@@ -242,14 +242,14 @@ Example file:
 ### auth_jwt_require
 
 ```
-Syntax:  auth_jwt_require $value ... [error=401 | 403];
+Syntax:  auth_jwt_require $value ... [error=code];
 Default: -
 Context: http, server, location, limit_except
 ```
 
 Specifies additional checks for JWT validation. The value can contain text, variables, and their combination, and must start with a variable. Authentication succeeds only if all values are non-empty and not equal to `"0"`.
 
-If any check fails, the 401 error code is returned. The optional `error` parameter allows redefining the error code to 403.
+If any check fails, the 401 error code is returned. The optional `error` parameter allows redefining the error code to any HTTP status code in the range 400-599, excluding nginx internal codes 444 and 499.
 
 ```nginx
 map $jwt_claim_iss $valid_jwt_iss {
