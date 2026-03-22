@@ -80,11 +80,11 @@ get_js_json(const json_t *js, const char *key,
             }
 
             free(var);
-        }else {
+        } else {
             js_obj = json_object_get(js_val, key);
             if (js_obj == NULL) {
                 js_val = NULL;
-            }else {
+            } else {
                 js_val = js_obj;
             }
         }
@@ -117,7 +117,7 @@ get_js_string(const json_t *js, const char *key,
 
     if (json_typeof(js_val) == JSON_STRING) {
         val = json_string_value(js_val);
-    }else {
+    } else {
         errno = EINVAL;
     }
 
@@ -144,7 +144,7 @@ get_js_int(const json_t *js, const char *key,
 
     if (json_typeof(js_val) == JSON_INTEGER) {
         val = (long) json_integer_value(js_val);
-    }else {
+    } else {
         errno = EINVAL;
     }
 

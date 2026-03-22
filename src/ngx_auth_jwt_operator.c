@@ -119,7 +119,7 @@ ngx_auth_jwt_op_any(ngx_auth_jwt_json_t *input,
                 }
             }
         }
-    }else {
+    } else {
         for (j = 0; j < req_size; j++) {
             req_val = ngx_auth_jwt_json_array_get(requirement, j);
             if (ngx_auth_jwt_json_equal(input, req_val)) {
@@ -354,7 +354,7 @@ ngx_auth_jwt_op_match(ngx_auth_jwt_json_t *input,
 
     if (rc >= 0) {
         return NGX_OK;
-    }else if (rc == NGX_REGEX_NO_MATCHED) {
+    } else if (rc == NGX_REGEX_NO_MATCHED) {
         return NGX_DECLINED;
     }
 
@@ -388,37 +388,37 @@ ngx_auth_jwt_operator_validate(char *op,
     if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_NE) == 0) {
         negate = !negate;
         name = NGX_AUTH_JWT_OPERATOR_EQ;
-    }else if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_NIN) == 0) {
+    } else if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_NIN) == 0) {
         negate = !negate;
         name = NGX_AUTH_JWT_OPERATOR_IN;
-    }else if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_NINTERSECT) == 0) {
+    } else if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_NINTERSECT) == 0) {
         negate = !negate;
         name = NGX_AUTH_JWT_OPERATOR_ANY;
-    }else if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_INTERSECT) == 0) {
+    } else if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_INTERSECT) == 0) {
         name = NGX_AUTH_JWT_OPERATOR_ANY;
     }
 
     /* dispatch */
     if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_EQ) == 0) {
         rc = ngx_auth_jwt_op_eq(input, requirement);
-    }else if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_GT) == 0) {
+    } else if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_GT) == 0) {
         rc = ngx_auth_jwt_op_gt(input, requirement);
-    }else if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_GE) == 0) {
+    } else if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_GE) == 0) {
         rc = ngx_auth_jwt_op_ge(input, requirement);
-    }else if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_LT) == 0) {
+    } else if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_LT) == 0) {
         rc = ngx_auth_jwt_op_lt(input, requirement);
-    }else if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_LE) == 0) {
+    } else if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_LE) == 0) {
         rc = ngx_auth_jwt_op_le(input, requirement);
-    }else if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_ANY) == 0) {
+    } else if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_ANY) == 0) {
         rc = ngx_auth_jwt_op_any(input, requirement);
-    }else if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_IN) == 0) {
+    } else if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_IN) == 0) {
         rc = ngx_auth_jwt_op_in(input, requirement);
 #if (NGX_PCRE)
-    }else if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_MATCH) == 0) {
+    } else if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_MATCH) == 0) {
         rc = ngx_auth_jwt_op_match(input, requirement, (ngx_regex_t *) regex,
                                    pool, log);
 #endif
-    }else {
+    } else {
         return NGX_ERROR;
     }
 
