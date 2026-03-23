@@ -16,7 +16,7 @@ permissions: {}
 
 defaults:
   run:
-    shell: bash
+    shell: sh
 
 jobs:
   test:
@@ -25,7 +25,8 @@ jobs:
       packages: read
     runs-on: ubuntu-latest
     steps:
-      - name: Set up step
+      - if: ${{ matrix.nginx != 'alpine' }}
+        name: Set up step
         run: |
           sudo apt-get update
           sudo apt-get upgrade -y --no-install-recommends
@@ -44,13 +45,38 @@ jobs:
           PERL_MM_OPT: ''
           PERL_MM_USE_DEFAULT: 1
           PERL5LIB: ''
+      - if: ${{ matrix.nginx == 'alpine' }}
+        name: Set up step with Alpine
+        run: |
+          apk upgrade
+          apk add \
+            bash \
+            curl \
+            gcc \
+            gd-dev \
+            geoip-dev \
+            git \
+            jansson-dev \
+            libxslt-dev \
+            linux-headers \
+            make \
+            musl-dev \
+            nginx \
+            openssl-dev \
+            pcre2-dev \
+            perl-dev \
+            perl-utils \
+            zlib-dev
+          cpan -Ti Test::Nginx
+        env:
+          PERL_MM_USE_DEFAULT: 1
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
           set-safe-directory: true
           token: ${{ github.token }}
-      - if: ${{ matrix.nginx == 'ubuntu' }}
+      - if: ${{ matrix.nginx == 'ubuntu' || matrix.nginx == 'alpine' }}
         name: Build with Ubuntu
         run: |
           # Download Nginx
@@ -72,10 +98,16 @@ jobs:
             --add-dynamic-module=..
           make -j
           # Copy module
-          sudo mkdir -p /usr/lib/nginx/modules
-          sudo cp objs/ngx_http_auth_jwt_module.so /usr/lib/nginx/modules/
-          sudo ln -sfn /usr/sbin/nginx /usr/local/sbin/nginx
-      - if: ${{ matrix.nginx != 'ubuntu' }}
+          if [ "${dist}" = "ubuntu" ]; then
+            sudo=sudo
+          fi
+          ${sudo} mkdir -p /usr/lib/nginx/modules
+          ${sudo} cp objs/ngx_http_auth_jwt_module.so /usr/lib/nginx/modules/
+          ${sudo} mkdir -p /usr/local/sbin
+          ${sudo} ln -sfn /usr/sbin/nginx /usr/local/sbin/nginx
+        env:
+          dist: ${{ matrix.nginx }}
+      - if: ${{ matrix.nginx != 'ubuntu' && matrix.nginx != 'alpine' }}
         name: Build with sources
         run: |
           # Download Nginx
@@ -123,5 +155,9 @@ jobs:
     strategy:
       matrix:
         nginx:
+          - alpine
           - ubuntu
           - '1.29.6'
+    container:
+      image: ${{ matrix.nginx == 'alpine' && 'alpine:latest' || null }}
+      options: ${{ matrix.nginx == 'alpine' && '--init' || null }}
