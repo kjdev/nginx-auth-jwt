@@ -19,7 +19,7 @@ apk add \
   make \
   musl-dev \
   openssl-dev \
-  pcre-dev \
+  pcre2-dev \
   perl-dev \
   zlib-dev
 nginx_version=$(nginx -v 2>&1 | sed 's/^[^0-9]*//')
