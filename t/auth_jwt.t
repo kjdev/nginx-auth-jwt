@@ -370,14 +370,14 @@ location / {
 --- request
 GET /
 --- more_headers
-Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiIsImtpZCI6InRlc3QxIn0.eyJpc3MiOiJodHRwczovL3Rlc3QxLmlzc3Vlci5leGFtcGxlLmNvbSIsInN1YiI6InRlc3QxLmlkZW50aWZpZXIiLCJhdWQiOiJ0ZXN0MS5hdWRpZW5jZS5leGFtcGxlLmNvbSIsImV4cCI6IDQxMzM4NjIwMDAuODg4OTQxLCJpYXQiOiAxNjc1MDQ2MDgzLjg4ODk0MSwiZW1haWwiOiJ0ZXN0MUBleGFtcGxlLmNvbSJ9.c9ZHoWviBaQ8NiGhoWOx6IN9hsmJMBRztg22RHieEdM
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiIsImtpZCI6InRlc3QxIn0.eyJpc3MiOiJodHRwczovL3Rlc3QxLmlzc3Vlci5leGFtcGxlLmNvbSIsInN1YiI6InRlc3QxLmlkZW50aWZpZXIiLCJhdWQiOiJ0ZXN0MS5hdWRpZW5jZS5leGFtcGxlLmNvbSIsImV4cCI6NDEzMzg2MjAwMC44NzUsImlhdCI6MTY3NTA0NjA4My44NzUsImVtYWlsIjoidGVzdDFAZXhhbXBsZS5jb20ifQ.9-4cNBRU2gCdmS_cOZM6CY4wqnVL3hT7h3YbmlgX8ho
 --- response_headers
 X-Jwt-Claim-Iss: https://test1.issuer.example.com
 X-Jwt-Claim-Sub: test1.identifier
 X-Jwt-Claim-Aud: test1.audience.example.com
 X-Jwt-Claim-Email: test1@example.com
-X-Jwt-Claim-Exp: 4133862000.8889408
-X-Jwt-Claim-Iat: 1675046083.888941
+X-Jwt-Claim-Exp: 4133862000.875
+X-Jwt-Claim-Iat: 1675046083.875
 WWW-Authenticate: Bearer realm=""
 --- error_code: 200
 
