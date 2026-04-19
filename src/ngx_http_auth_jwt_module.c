@@ -1001,57 +1001,51 @@ ngx_http_auth_jwt_conf_set_requirement(ngx_conf_t *cf,
         == 0)
     {
         if (requirement->value->lengths == NULL) {
-            u_char *pattern_data;
-            size_t pattern_len;
-            ngx_auth_jwt_json_t *pattern_json = NULL;
+            ngx_str_t pattern;
+            nxe_json_t *pattern_json = NULL;
             ngx_regex_compile_t rgc;
             u_char errstr[NGX_MAX_CONF_ERRSTR];
 
             /* static value: decode JSON exactly like the request-time path */
-            pattern_data = value[3].data;
-            pattern_len = value[3].len;
+            pattern = value[3];
 
-            if (pattern_len > 5
-                && ngx_strncmp(pattern_data, "json=", 5) == 0)
+            if (pattern.len > 5
+                && ngx_strncmp(pattern.data, "json=", 5) == 0)
             {
-                const char *pattern_str;
-                size_t decoded_len;
+                ngx_str_t encoded;
 
-                pattern_json = ngx_auth_jwt_json_parse(
-                    (const char *) (pattern_data + 5), pattern_len - 5);
+                encoded.data = pattern.data + 5;
+                encoded.len = pattern.len - 5;
+
+                pattern_json = nxe_json_parse(&encoded, cf->pool);
 
                 if (pattern_json == NULL
-                    || ngx_auth_jwt_json_string(pattern_json, &pattern_str,
-                                                &decoded_len) != NGX_OK)
+                    || nxe_json_string(pattern_json, &pattern) != NGX_OK)
                 {
-                    ngx_auth_jwt_json_free(pattern_json);
+                    nxe_json_free(pattern_json);
                     return "match operator requires a JSON string pattern";
                 }
-
-                pattern_data = (u_char *) pattern_str;
-                pattern_len = decoded_len;
             }
 
-            if (pattern_len > NGX_AUTH_JWT_MAX_REGEX_SIZE) {
-                ngx_auth_jwt_json_free(pattern_json);
+            if (pattern.len > NGX_AUTH_JWT_MAX_REGEX_SIZE) {
+                nxe_json_free(pattern_json);
                 return "regex pattern too large";
             }
 
             ngx_memzero(&rgc, sizeof(ngx_regex_compile_t));
-            rgc.pattern.data = pattern_data;
-            rgc.pattern.len = pattern_len;
+            rgc.pattern = pattern;
             rgc.pool = cf->pool;
             rgc.err.data = errstr;
             rgc.err.len = NGX_MAX_CONF_ERRSTR;
 
             if (ngx_regex_compile(&rgc) != NGX_OK) {
-                ngx_auth_jwt_json_free(pattern_json);
+                nxe_json_free(pattern_json);
                 ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
                                    "regex compile failed: %V", &rgc.err);
                 return NGX_CONF_ERROR;
             }
 
-            ngx_auth_jwt_json_free(pattern_json);
+            nxe_json_free(pattern_json);
             requirement->regex = rgc.regex;
         }
     }

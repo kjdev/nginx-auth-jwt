@@ -2,7 +2,7 @@
 #define NGX_AUTH_JWT_OPERATOR_H
 
 #include <ngx_core.h>
-#include "ngx_auth_jwt_json.h"
+#include "nxe_json.h"
 
 #define NGX_AUTH_JWT_OPERATOR_EQ "eq"
 #define NGX_AUTH_JWT_OPERATOR_NE "ne"
@@ -32,7 +32,7 @@
  *   NGX_ERROR    internal error (type mismatch, etc.)
  */
 ngx_int_t ngx_auth_jwt_operator_validate(char *op,
-    ngx_auth_jwt_json_t *input, ngx_auth_jwt_json_t *requirement,
+    nxe_json_t *input, nxe_json_t *requirement,
     void *regex, ngx_pool_t *pool, ngx_log_t *log);
 
 #endif /* NGX_AUTH_JWT_OPERATOR_H */
