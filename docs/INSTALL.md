@@ -31,9 +31,17 @@ apk add --no-cache jansson-dev openssl-dev
 
 ### Step 1: Clone the repository
 
+Clone with submodules so the `nxe-json` dependency is fetched alongside the module:
+
 ```bash
-git clone https://github.com/kjdev/nginx-auth-jwt
+git clone --recursive https://github.com/kjdev/nginx-auth-jwt
 cd nginx-auth-jwt
+```
+
+If you already cloned without `--recursive`, initialize the submodules explicitly:
+
+```bash
+git submodule update --init --recursive
 ```
 
 ### Step 2: Download nginx source
