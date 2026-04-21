@@ -75,6 +75,7 @@ jobs:
         with:
           persist-credentials: false
           set-safe-directory: true
+          submodules: true
           token: ${{ github.token }}
       - if: ${{ matrix.nginx == 'ubuntu' || matrix.nginx == 'alpine' }}
         name: Build with Ubuntu
