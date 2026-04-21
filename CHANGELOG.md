@@ -1,5 +1,21 @@
 # Changelog
 
+## [511de8f](../../commit/511de8f) - 2026-04-22
+
+### Changed
+
+- Replace internal `ngx_auth_jwt_json` wrapper with the `nxe_json` API from the `nxe-json` submodule. No change in runtime behavior for configured JWT validation
+
+## [557bdf3](../../commit/557bdf3) - 2026-04-22
+
+### Added
+
+- Add `nxe-json` 0.1.0 submodule under `nxe-json/` (jansson wrapper with built-in size, depth, array, string, and key-count limits)
+
+### Changed
+
+- Building from source now requires initializing the submodule (`git clone --recursive` or `git submodule update --init --recursive`)
+
 ## [1de09b9](../../commit/1de09b9) - 2026-03-19
 
 ### Changed
