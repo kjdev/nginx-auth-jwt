@@ -1,5 +1,11 @@
 # Changelog
 
+## [90064ca](../../commit/90064ca) - 2026-04-24
+
+### Changed
+
+- Bump `nxe-json` submodule to 0.2.0. Adds `nxe_json_object_get_integer` / `nxe_json_object_get_boolean` helpers and zero-clears extractor out-params on failure
+
 ## [511de8f](../../commit/511de8f) - 2026-04-22
 
 ### Changed
