@@ -2,12 +2,49 @@
 #include <ngx_core.h>
 #include <ngx_http.h>
 
-#include "ngx_auth_jwt_decode.h"
-#include "ngx_auth_jwt_jwks.h"
-#include "ngx_auth_jwt_jws.h"
+#include <jansson.h>
+
+#include <nxe_jwx.h>
+
 #include "ngx_auth_jwt_claims.h"
 #include "ngx_auth_jwt_field.h"
 #include "ngx_auth_jwt_operator.h"
+
+
+/*
+ * Lightweight collection of nxe-jwx keysets.
+ *
+ * nxe-jwx exposes a single keyset (`nxe_jwx_jwks_t *`) per parse call,
+ * but this module merges keys from many sources (auth_jwt_key_file,
+ * auth_jwt_key_request, and the var-driven loc conf).  The keystore
+ * keeps them as an ordered list; signature verification iterates the
+ * list and accepts the first keyset that returns NGX_OK.
+ */
+typedef struct {
+    ngx_array_t *keysets;       /* of nxe_jwx_jwks_t * */
+    ngx_pool_t  *pool;
+} ngx_http_auth_jwt_keystore_t;
+
+
+static ngx_http_auth_jwt_keystore_t *ngx_http_auth_jwt_keystore_create(
+    ngx_pool_t *pool);
+static ngx_int_t ngx_http_auth_jwt_keystore_add(
+    ngx_http_auth_jwt_keystore_t *ks, nxe_jwx_jwks_t *jwks);
+static ngx_int_t ngx_http_auth_jwt_keystore_append(
+    ngx_http_auth_jwt_keystore_t *dst,
+    const ngx_http_auth_jwt_keystore_t *src);
+static ngx_uint_t ngx_http_auth_jwt_keystore_count(
+    const ngx_http_auth_jwt_keystore_t *ks);
+static ngx_int_t ngx_http_auth_jwt_keystore_verify(
+    ngx_http_auth_jwt_keystore_t *ks, nxe_jwx_token_t *token,
+    ngx_pool_t *pool, const ngx_str_t *kid, ngx_log_t *log);
+
+static ngx_int_t ngx_http_auth_jwt_decode_token(ngx_http_request_t *r,
+    u_char *token, size_t token_len,
+    nxe_jwx_token_t **out_jwx, ngx_auth_jwt_t **out_jwt);
+static void ngx_http_auth_jwt_jansson_cleanup(void *data);
+static json_t *ngx_http_auth_jwt_segment_to_json(ngx_pool_t *pool,
+    const u_char *src, size_t src_len);
 
 #define NGX_HTTP_AUTH_JWT_CLAIM_VAR_PREFIX "jwt_claim_"
 #define NGX_HTTP_AUTH_JWT_HEADER_VAR_PREFIX "jwt_header_"
@@ -67,9 +104,9 @@ typedef struct {
         json_t *kids;
     } revocation;
     struct {
-        ngx_array_t                *files;
-        ngx_array_t                *requests;
-        ngx_auth_jwt_jwks_keyset_t *vars;
+        ngx_array_t                  *files;
+        ngx_array_t                  *requests;
+        ngx_http_auth_jwt_keystore_t *vars;
     } key;
     struct {
         ngx_flag_t  exp;
@@ -95,16 +132,17 @@ typedef struct {
 } ngx_http_auth_jwt_key_file_t;
 
 typedef struct {
-    ngx_flag_t                  use_bearer;
-    ngx_uint_t                  done;
-    ngx_uint_t                  subrequest;
-    ngx_flag_t                  verified;
-    u_char                     *token;
-    unsigned int                payload_len;
-    ngx_auth_jwt_t             *jwt;
-    ngx_auth_jwt_jwks_keyset_t *keys;
-    ngx_int_t                   status;
-    ngx_flag_t                  reject_request;
+    ngx_flag_t                    use_bearer;
+    ngx_uint_t                    done;
+    ngx_uint_t                    subrequest;
+    ngx_flag_t                    verified;
+    u_char                       *token;
+    size_t                        token_len;
+    nxe_jwx_token_t              *jwx_token;
+    ngx_auth_jwt_t               *jwt;
+    ngx_http_auth_jwt_keystore_t *keys;
+    ngx_int_t                     status;
+    ngx_flag_t                    reject_request;
 } ngx_http_auth_jwt_ctx_t;
 
 typedef struct {
@@ -343,31 +381,73 @@ ngx_http_auth_jwt_strdup(ngx_pool_t *pool, u_char *data, size_t len)
 
 static int
 ngx_http_auth_jwt_key_import_file(ngx_pool_t *pool,
-    ngx_auth_jwt_jwks_keyset_t **keyset,
+    ngx_http_auth_jwt_keystore_t **keystore,
     const char *path, const int is_jwks)
 {
-    ngx_auth_jwt_jwks_keyset_t *loaded;
+    ngx_str_t contents;
+    ngx_file_info_t fi;
+    ngx_fd_t fd;
+    ssize_t n;
+    nxe_jwx_jwks_t *jwks;
+    int rc = 1;
 
     if (path == NULL) {
         return 1;
     }
 
-    loaded = ngx_auth_jwt_jwks_load_file(pool, path, is_jwks);
-    if (loaded == NULL) {
+    fd = ngx_open_file(path, NGX_FILE_RDONLY, NGX_FILE_OPEN, 0);
+    if (fd == NGX_INVALID_FILE) {
         return 1;
     }
 
-    if (*keyset == NULL) {
-        *keyset = loaded;
-    } else {
-        if (ngx_auth_jwt_jwks_append(*keyset, loaded) != 0) {
-            ngx_auth_jwt_jwks_free(loaded);
-            return 1;
-        }
-        ngx_auth_jwt_jwks_free(loaded);
+    if (ngx_fd_info(fd, &fi) == NGX_FILE_ERROR) {
+        ngx_close_file(fd);
+        return 1;
     }
 
-    return 0;
+    if (ngx_file_size(&fi) <= 0
+        || (size_t) ngx_file_size(&fi) > NXE_JWX_MAX_JWKS_SIZE)
+    {
+        ngx_close_file(fd);
+        return 1;
+    }
+
+    contents.len = (size_t) ngx_file_size(&fi);
+    contents.data = ngx_pnalloc(pool, contents.len);
+    if (contents.data == NULL) {
+        ngx_close_file(fd);
+        return 1;
+    }
+
+    n = ngx_read_fd(fd, contents.data, contents.len);
+    ngx_close_file(fd);
+
+    if (n < 0 || (size_t) n != contents.len) {
+        return 1;
+    }
+
+    if (is_jwks) {
+        jwks = nxe_jwx_jwks_parse(&contents, pool);
+    } else {
+        jwks = nxe_jwx_jwks_parse_keyval(&contents, pool);
+    }
+
+    if (jwks == NULL) {
+        return 1;
+    }
+
+    if (*keystore == NULL) {
+        *keystore = ngx_http_auth_jwt_keystore_create(pool);
+        if (*keystore == NULL) {
+            return 1;
+        }
+    }
+
+    if (ngx_http_auth_jwt_keystore_add(*keystore, jwks) == NGX_OK) {
+        rc = 0;
+    }
+
+    return rc;
 }
 
 static int
@@ -410,37 +490,39 @@ ngx_http_auth_jwt_fill_list_object_by_file(json_t **object, const char *path)
 
 static int
 ngx_http_auth_jwt_key_import_string(ngx_pool_t *pool,
-    ngx_auth_jwt_jwks_keyset_t **keyset,
+    ngx_http_auth_jwt_keystore_t **keystore,
     const char *input, const size_t len,
     const int is_jwks)
 {
-    ngx_auth_jwt_jwks_keyset_t *loaded;
-    size_t actual_len;
+    ngx_str_t buf;
+    nxe_jwx_jwks_t *jwks;
 
     if (input == NULL) {
         return 1;
     }
 
-    actual_len = (len > 0) ? len : strlen(input);
+    buf.data = (u_char *) input;
+    buf.len = (len > 0) ? len : ngx_strlen(input);
 
     if (is_jwks) {
-        loaded = ngx_auth_jwt_jwks_parse(pool, input, actual_len);
+        jwks = nxe_jwx_jwks_parse(&buf, pool);
     } else {
-        loaded = ngx_auth_jwt_jwks_parse_keyval(pool, input, actual_len);
+        jwks = nxe_jwx_jwks_parse_keyval(&buf, pool);
     }
 
-    if (loaded == NULL) {
+    if (jwks == NULL) {
         return 1;
     }
 
-    if (*keyset == NULL) {
-        *keyset = loaded;
-    } else {
-        if (ngx_auth_jwt_jwks_append(*keyset, loaded) != 0) {
-            ngx_auth_jwt_jwks_free(loaded);
+    if (*keystore == NULL) {
+        *keystore = ngx_http_auth_jwt_keystore_create(pool);
+        if (*keystore == NULL) {
             return 1;
         }
-        ngx_auth_jwt_jwks_free(loaded);
+    }
+
+    if (ngx_http_auth_jwt_keystore_add(*keystore, jwks) != NGX_OK) {
+        return 1;
     }
 
     return 0;
@@ -1478,13 +1560,12 @@ ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
     }
 
     if (prev->key.vars) {
-        if (conf->key.vars) {
-            ngx_auth_jwt_jwks_append(conf->key.vars, prev->key.vars);
-        } else {
-            conf->key.vars = ngx_auth_jwt_jwks_create(cf->pool);
-            if (conf->key.vars != NULL) {
-                ngx_auth_jwt_jwks_append(conf->key.vars, prev->key.vars);
-            }
+        if (conf->key.vars == NULL) {
+            conf->key.vars = ngx_http_auth_jwt_keystore_create(cf->pool);
+        }
+        if (conf->key.vars != NULL) {
+            (void) ngx_http_auth_jwt_keystore_append(conf->key.vars,
+                                                     prev->key.vars);
         }
     }
 
@@ -1530,9 +1611,11 @@ ngx_http_auth_jwt_exit_process(ngx_cycle_t *cycle)
 
     conf = (ngx_http_auth_jwt_loc_conf_t *) ctx->loc_conf[index];
 
-    if (conf && conf->key.vars) {
-        ngx_auth_jwt_jwks_free(conf->key.vars);
-    }
+    /*
+     * conf->key.vars is allocated from cf->pool; pool teardown frees
+     * the keystore arrays and registers cleanup handlers for each
+     * EVP_PKEY in the underlying nxe-jwx keysets.  Nothing to do here.
+     */
 
     if (conf && conf->revocation.subs) {
         json_delete(conf->revocation.subs);
@@ -1544,26 +1627,24 @@ ngx_http_auth_jwt_exit_process(ngx_cycle_t *cycle)
 }
 
 /*
- * Explicit cleanup for ctx resources. Pool cleanup handlers also
- * release these, but explicit free ensures deterministic ordering.
- * All free functions are idempotent (NULL-check + NULL-set).
+ * Sentinel cleanup handler for the per-request module context.
+ *
+ * This function intentionally does no work: ctx->jwt holds borrowed
+ * references to jansson trees that are tied to a pool cleanup handler
+ * installed in ngx_http_auth_jwt_decode_token, and ctx->jwx_token /
+ * ctx->keys are owned by the request pool and freed when it is
+ * destroyed.
+ *
+ * It must remain registered, however, because ngx_http_auth_jwt_get_
+ * module_ctx() locates the module context after a context reset by
+ * scanning the pool's cleanup chain for a cln->handler whose address
+ * matches this function.  Removing the registration would break that
+ * lookup for internal redirects and filter_finalize re-entries.
  */
 static void
 ngx_http_auth_jwt_cleanup(void *data)
 {
-    ngx_http_auth_jwt_ctx_t *ctx = data;
-
-    if (!ctx) {
-        return;
-    }
-
-    if (ctx->jwt) {
-        ngx_auth_jwt_free(ctx->jwt);
-    }
-
-    if (ctx->keys) {
-        ngx_auth_jwt_jwks_free(ctx->keys);
-    }
+    (void) data;
 }
 
 static ngx_int_t
@@ -1699,9 +1780,10 @@ ngx_http_auth_jwt_load_keys(ngx_http_request_t *r,
     }
 
     if (cf->key.vars) {
-        ctx->keys = ngx_auth_jwt_jwks_create(r->pool);
+        ctx->keys = ngx_http_auth_jwt_keystore_create(r->pool);
         if (ctx->keys != NULL) {
-            ngx_auth_jwt_jwks_append(ctx->keys, cf->key.vars);
+            (void) ngx_http_auth_jwt_keystore_append(ctx->keys,
+                                                     cf->key.vars);
         }
     }
 
@@ -2200,7 +2282,7 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
         return ngx_http_auth_jwt_validate_variable(r, cf, ctx);
     }
 
-    if (!ctx->keys || ctx->keys->nkeys == 0) {
+    if (!ctx->keys || ngx_http_auth_jwt_keystore_count(ctx->keys) == 0) {
         ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
                       "auth_jwt: rejected due to without signature key");
         return NGX_ERROR;
@@ -2219,21 +2301,16 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
     }
 
     {
-        int jws_rc;
-        int kid_tried = 0;
+        const ngx_str_t *kid_str;
+        ngx_int_t jws_rc;
 
-        jws_rc = ngx_auth_jwt_jws_verify((const char *) ctx->token,
-                                         ctx->payload_len,
-                                         ctx->keys, algorithm, kid,
-                                         &kid_tried);
+        kid_str = nxe_jwx_token_kid(ctx->jwx_token);
 
-        if (kid_tried && kid) {
-            ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
-                          "auth_jwt: rejected due to signature validate failure"
-                          ": kid=\"%s\"", kid);
-        }
+        jws_rc = ngx_http_auth_jwt_keystore_verify(ctx->keys, ctx->jwx_token,
+                                                   r->pool, kid_str,
+                                                   r->connection->log);
 
-        if (jws_rc == 0) {
+        if (jws_rc == NGX_OK) {
             ctx->verified = 1;
             return ngx_http_auth_jwt_validate_variable(r, cf, ctx);
         }
@@ -2352,10 +2429,11 @@ ngx_http_auth_jwt_handler(ngx_http_request_t *r, ngx_int_t phase)
                       "auth_jwt: failed to allocate token");
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
+    ctx->token_len = var.len;
 
     /* parse jwt token */
-    if (ngx_auth_jwt_decode(r->pool, &ctx->jwt, (char *) ctx->token,
-                            &ctx->payload_len) != 0
+    if (ngx_http_auth_jwt_decode_token(r, ctx->token, ctx->token_len,
+                                       &ctx->jwx_token, &ctx->jwt) != NGX_OK
         || ctx->jwt == NULL)
     {
         ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
@@ -2374,4 +2452,323 @@ ngx_http_auth_jwt_handler(ngx_http_request_t *r, ngx_int_t phase)
     }
 
     return ngx_http_auth_jwt_http_ok();
+}
+
+
+/*
+ * Pool cleanup hook that releases the jansson trees attached to a
+ * decoded JWT.  The struct itself lives on the request pool.
+ */
+static void
+ngx_http_auth_jwt_jansson_cleanup(void *data)
+{
+    ngx_auth_jwt_t *jwt = data;
+
+    if (jwt == NULL) {
+        return;
+    }
+
+    if (jwt->headers != NULL) {
+        json_decref(jwt->headers);
+        jwt->headers = NULL;
+    }
+
+    if (jwt->payload != NULL) {
+        json_decref(jwt->payload);
+        jwt->payload = NULL;
+    }
+}
+
+
+/*
+ * Decode a JWT segment as base64url and parse the result as JSON
+ * (jansson view).  Mirrors what nxe-jwx already did for nxe_json so
+ * the validation layer can keep relying on jansson while signature
+ * verification goes through nxe-jwx.
+ */
+static json_t *
+ngx_http_auth_jwt_segment_to_json(ngx_pool_t *pool,
+    const u_char *src, size_t src_len)
+{
+    ngx_str_t encoded, decoded;
+
+    encoded.data = (u_char *) src;
+    encoded.len = src_len;
+
+    decoded.data = ngx_pnalloc(pool, ngx_base64_decoded_length(src_len) + 1);
+    if (decoded.data == NULL) {
+        return NULL;
+    }
+
+    if (ngx_decode_base64url(&decoded, &encoded) != NGX_OK) {
+        return NULL;
+    }
+
+    return json_loadb((char *) decoded.data, decoded.len,
+                      JSON_REJECT_DUPLICATES, NULL);
+}
+
+
+static ngx_int_t
+ngx_http_auth_jwt_decode_token(ngx_http_request_t *r,
+    u_char *token, size_t token_len,
+    nxe_jwx_token_t **out_jwx, ngx_auth_jwt_t **out_jwt)
+{
+    nxe_jwx_token_t *jwx;
+    ngx_auth_jwt_t *jwt;
+    ngx_str_t token_str;
+    ngx_pool_cleanup_t *cln;
+    u_char *p, *body, *sig;
+
+    if (out_jwx == NULL || out_jwt == NULL) {
+        return NGX_ERROR;
+    }
+
+    *out_jwx = NULL;
+    *out_jwt = NULL;
+
+    token_str.data = token;
+    token_str.len = token_len;
+
+    jwx = nxe_jwx_decode(&token_str, r->pool);
+    if (jwx == NULL) {
+        return NGX_ERROR;
+    }
+
+    /*
+     * Locate the segment boundaries in the raw token to feed the
+     * jansson view.  nxe_jwx_decode already validated that there are
+     * exactly three segments and that they fit within the size
+     * limits, so failing to find dots here would be a logic error.
+     */
+    p = ngx_strlchr(token, token + token_len, '.');
+    if (p == NULL) {
+        return NGX_ERROR;
+    }
+    body = p + 1;
+
+    sig = ngx_strlchr(body, token + token_len, '.');
+    if (sig == NULL) {
+        return NGX_ERROR;
+    }
+
+    jwt = ngx_pcalloc(r->pool, sizeof(ngx_auth_jwt_t));
+    if (jwt == NULL) {
+        return NGX_ERROR;
+    }
+
+    cln = ngx_pool_cleanup_add(r->pool, 0);
+    if (cln == NULL) {
+        return NGX_ERROR;
+    }
+    cln->handler = ngx_http_auth_jwt_jansson_cleanup;
+    cln->data = jwt;
+
+    jwt->headers = ngx_http_auth_jwt_segment_to_json(r->pool, token,
+                                                     (size_t) (p - token));
+    if (jwt->headers == NULL || !json_is_object(jwt->headers)) {
+        return NGX_ERROR;
+    }
+
+    jwt->payload = ngx_http_auth_jwt_segment_to_json(r->pool, body,
+                                                     (size_t) (sig - body));
+    if (jwt->payload == NULL || !json_is_object(jwt->payload)) {
+        return NGX_ERROR;
+    }
+
+    *out_jwx = jwx;
+    *out_jwt = jwt;
+
+    return NGX_OK;
+}
+
+
+/* === keystore: list of nxe_jwx_jwks_t * ============================ */
+
+static ngx_http_auth_jwt_keystore_t *
+ngx_http_auth_jwt_keystore_create(ngx_pool_t *pool)
+{
+    ngx_http_auth_jwt_keystore_t *ks;
+
+    if (pool == NULL) {
+        return NULL;
+    }
+
+    ks = ngx_pcalloc(pool, sizeof(*ks));
+    if (ks == NULL) {
+        return NULL;
+    }
+
+    ks->keysets = ngx_array_create(pool, 2, sizeof(nxe_jwx_jwks_t *));
+    if (ks->keysets == NULL) {
+        return NULL;
+    }
+    ks->pool = pool;
+
+    return ks;
+}
+
+
+static ngx_int_t
+ngx_http_auth_jwt_keystore_add(ngx_http_auth_jwt_keystore_t *ks,
+    nxe_jwx_jwks_t *jwks)
+{
+    nxe_jwx_jwks_t **slot;
+
+    if (ks == NULL || jwks == NULL) {
+        return NGX_ERROR;
+    }
+
+    slot = ngx_array_push(ks->keysets);
+    if (slot == NULL) {
+        return NGX_ERROR;
+    }
+
+    *slot = jwks;
+
+    return NGX_OK;
+}
+
+
+static ngx_int_t
+ngx_http_auth_jwt_keystore_append(ngx_http_auth_jwt_keystore_t *dst,
+    const ngx_http_auth_jwt_keystore_t *src)
+{
+    ngx_uint_t i;
+    nxe_jwx_jwks_t **src_slot;
+
+    if (dst == NULL || src == NULL || src->keysets == NULL) {
+        return NGX_ERROR;
+    }
+
+    src_slot = src->keysets->elts;
+
+    for (i = 0; i < src->keysets->nelts; i++) {
+        if (ngx_http_auth_jwt_keystore_add(dst, src_slot[i]) != NGX_OK) {
+            return NGX_ERROR;
+        }
+    }
+
+    return NGX_OK;
+}
+
+
+static ngx_uint_t
+ngx_http_auth_jwt_keystore_count(const ngx_http_auth_jwt_keystore_t *ks)
+{
+    ngx_uint_t total = 0;
+    ngx_uint_t i;
+    nxe_jwx_jwks_t **slot;
+
+    if (ks == NULL || ks->keysets == NULL) {
+        return 0;
+    }
+
+    slot = ks->keysets->elts;
+
+    for (i = 0; i < ks->keysets->nelts; i++) {
+        total += nxe_jwx_jwks_count(slot[i]);
+    }
+
+    return total;
+}
+
+
+static ngx_int_t
+ngx_http_auth_jwt_keystore_verify(ngx_http_auth_jwt_keystore_t *ks,
+    nxe_jwx_token_t *token, ngx_pool_t *pool,
+    const ngx_str_t *kid, ngx_log_t *log)
+{
+    ngx_uint_t i;
+    ngx_int_t rc;
+    ngx_flag_t kid_tried = 0;
+    nxe_jwx_jwks_t **slot;
+    u_char *has_kid_cache = NULL;
+
+    if (ks == NULL || token == NULL || ks->keysets == NULL) {
+        return NGX_DECLINED;
+    }
+
+    slot = ks->keysets->elts;
+
+    /*
+     * The legacy ngx_auth_jwt_jwks layer concatenated every loaded
+     * keyset into one container, so jws_verify saw all keys at once
+     * and could fall back from a kid-matched failure to a kid-less
+     * key in another file.  nxe-jwx keeps each parse result as its
+     * own kid-strict keyset, so the fan-out happens here in two
+     * passes:
+     *
+     *   pass 1 — try every keyset that owns the token's kid; remember
+     *            that we did so (mirrors the legacy kid_tried
+     *            out-param) and emit a single audit log line after
+     *            the pass completes without verifying.
+     *   pass 2 — try the remaining (kid-less / non-matching)
+     *            keysets so an unrelated key file can still verify
+     *            an unsigned-by-this-kid token.
+     *
+     * Either pass returns immediately on NGX_OK or NGX_ERROR.  The
+     * per-keyset has_kid lookup is memoised in `has_kid_cache` so we
+     * do not walk each keyset's kid list twice; allocation failure
+     * falls back gracefully to live lookups.
+     */
+
+    if (kid != NULL && kid->len > 0 && ks->keysets->nelts > 0) {
+        has_kid_cache = ngx_pnalloc(pool, ks->keysets->nelts);
+        if (has_kid_cache != NULL) {
+            for (i = 0; i < ks->keysets->nelts; i++) {
+                has_kid_cache[i] =
+                    (u_char) (nxe_jwx_jwks_has_kid(slot[i], kid) ? 1 : 0);
+            }
+        }
+
+        for (i = 0; i < ks->keysets->nelts; i++) {
+            ngx_flag_t matched = has_kid_cache != NULL
+                                 ? (ngx_flag_t) has_kid_cache[i]
+                                 : nxe_jwx_jwks_has_kid(slot[i], kid);
+
+            if (!matched) {
+                continue;
+            }
+
+            rc = nxe_jwx_jws_verify(token, slot[i], pool);
+            if (rc == NGX_OK) {
+                return NGX_OK;
+            }
+            if (rc == NGX_ERROR) {
+                return NGX_ERROR;
+            }
+
+            kid_tried = 1;
+        }
+
+        if (kid_tried) {
+            ngx_log_error(NGX_LOG_INFO, log, 0,
+                          "auth_jwt: rejected due to signature validate"
+                          " failure: kid=\"%V\"", kid);
+        }
+    }
+
+    for (i = 0; i < ks->keysets->nelts; i++) {
+        if (kid != NULL && kid->len > 0) {
+            ngx_flag_t matched = has_kid_cache != NULL
+                                 ? (ngx_flag_t) has_kid_cache[i]
+                                 : nxe_jwx_jwks_has_kid(slot[i], kid);
+
+            if (matched) {
+                /* already tried in pass 1 */
+                continue;
+            }
+        }
+
+        rc = nxe_jwx_jws_verify(token, slot[i], pool);
+        if (rc == NGX_OK) {
+            return NGX_OK;
+        }
+        if (rc == NGX_ERROR) {
+            return NGX_ERROR;
+        }
+    }
+
+    return NGX_DECLINED;
 }
