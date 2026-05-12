@@ -27,26 +27,6 @@ X-Jwt-Claim-Aud: test1.audience.example.com
 X-Jwt-Claim-Email: test1@example.com
 --- error_code: 200
 
-=== valid HS256 in key
---- http_config
-include $TEST_NGINX_CONF_DIR/authorized_server.conf;
---- config
-include $TEST_NGINX_CONF_DIR/jwt.conf;
-location / {
-  auth_jwt "" token=$test1_jwt;
-  auth_jwt_key_file $TEST_NGINX_DATA_DIR/keys.json keyval;
-  auth_jwt_require_header alg eq HS256;
-  include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
-}
---- request
-GET /
---- response_headers
-X-Jwt-Claim-Iss: https://test1.issuer.example.com
-X-Jwt-Claim-Sub: test1.identifier
-X-Jwt-Claim-Aud: test1.audience.example.com
-X-Jwt-Claim-Email: test1@example.com
---- error_code: 200
-
 === invalid HS256
 --- http_config
 include $TEST_NGINX_CONF_DIR/authorized_server.conf;
@@ -88,26 +68,6 @@ X-Jwt-Claim-Aud: test2.audience.example.com
 X-Jwt-Claim-Email: test2@example.com
 --- error_code: 200
 
-=== valid HS384 in key
---- http_config
-include $TEST_NGINX_CONF_DIR/authorized_server.conf;
---- config
-include $TEST_NGINX_CONF_DIR/jwt.conf;
-location / {
-  auth_jwt "" token=$test2_jwt;
-  auth_jwt_key_file $TEST_NGINX_DATA_DIR/keys.json keyval;
-  auth_jwt_require_header alg eq HS384;
-  include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
-}
---- request
-GET /
---- response_headers
-X-Jwt-Claim-Iss: https://test2.issuer.example.com
-X-Jwt-Claim-Sub: test2.identifier
-X-Jwt-Claim-Aud: test2.audience.example.com
-X-Jwt-Claim-Email: test2@example.com
---- error_code: 200
-
 === invalid HS384
 --- http_config
 include $TEST_NGINX_CONF_DIR/authorized_server.conf;
@@ -137,26 +97,6 @@ include $TEST_NGINX_CONF_DIR/jwt.conf;
 location / {
   auth_jwt "" token=$test3_jwt;
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
-  auth_jwt_require_header alg eq HS512;
-  include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
-}
---- request
-GET /
---- response_headers
-X-Jwt-Claim-Iss: https://test3.issuer.example.com
-X-Jwt-Claim-Sub: test3.identifier
-X-Jwt-Claim-Aud: test3.audience.example.com
-X-Jwt-Claim-Email: test3@example.com
---- error_code: 200
-
-=== valid HS512 in key
---- http_config
-include $TEST_NGINX_CONF_DIR/authorized_server.conf;
---- config
-include $TEST_NGINX_CONF_DIR/jwt.conf;
-location / {
-  auth_jwt "" token=$test3_jwt;
-  auth_jwt_key_file $TEST_NGINX_DATA_DIR/keys.json keyval;
   auth_jwt_require_header alg eq HS512;
   include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
 }

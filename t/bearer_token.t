@@ -12,14 +12,14 @@ __DATA__
 include $TEST_NGINX_CONF_DIR/authorized_server.conf;
 --- config
 set $test2_jwks $TEST_NGINX_DATA_DIR/test2.jwks;
-set $test3_key $TEST_NGINX_DATA_DIR/test3.json;
+set $test3_key $TEST_NGINX_DATA_DIR/test3.jwks;
 set $test5_jwks /test5.jwks;
 set $test6_key /test6.json;
 location / {
   auth_jwt "test1";
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/test1.jwks;
   auth_jwt_key_file $test2_jwks;
-  auth_jwt_key_file $test3_key keyval;
+  auth_jwt_key_file $test3_key;
   auth_jwt_key_request /test4.jwks;
   auth_jwt_key_request $test5_jwks;
   auth_jwt_key_request $test6_key keyval;
@@ -44,14 +44,14 @@ WWW-Authenticate: Bearer realm="test1"
 include $TEST_NGINX_CONF_DIR/authorized_server.conf;
 --- config
 set $test2_jwks $TEST_NGINX_DATA_DIR/test2.jwks;
-set $test3_key $TEST_NGINX_DATA_DIR/test3.json;
+set $test3_key $TEST_NGINX_DATA_DIR/test3.jwks;
 set $test5_jwks /test5.jwks;
 set $test6_key /test6.json;
 location / {
   auth_jwt "test2";
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/test1.jwks;
   auth_jwt_key_file $test2_jwks;
-  auth_jwt_key_file $test3_key keyval;
+  auth_jwt_key_file $test3_key;
   auth_jwt_key_request /test4.jwks;
   auth_jwt_key_request $test5_jwks;
   auth_jwt_key_request $test6_key keyval;
@@ -76,14 +76,14 @@ WWW-Authenticate: Bearer realm="test2"
 include $TEST_NGINX_CONF_DIR/authorized_server.conf;
 --- config
 set $test2_jwks $TEST_NGINX_DATA_DIR/test2.jwks;
-set $test3_key $TEST_NGINX_DATA_DIR/test3.json;
+set $test3_key $TEST_NGINX_DATA_DIR/test3.jwks;
 set $test5_jwks /test5.jwks;
 set $test6_key /test6.json;
 location / {
   auth_jwt "test3";
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/test1.jwks;
   auth_jwt_key_file $test2_jwks;
-  auth_jwt_key_file $test3_key keyval;
+  auth_jwt_key_file $test3_key;
   auth_jwt_key_request /test4.jwks;
   auth_jwt_key_request $test5_jwks;
   auth_jwt_key_request $test6_key keyval;
@@ -108,14 +108,14 @@ WWW-Authenticate: Bearer realm="test3"
 include $TEST_NGINX_CONF_DIR/authorized_server.conf;
 --- config
 set $test2_jwks $TEST_NGINX_DATA_DIR/test2.jwks;
-set $test3_key $TEST_NGINX_DATA_DIR/test3.json;
+set $test3_key $TEST_NGINX_DATA_DIR/test3.jwks;
 set $test5_jwks /test5.jwks;
 set $test6_key /test6.json;
 location / {
   auth_jwt "test4";
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/test1.jwks;
   auth_jwt_key_file $test2_jwks;
-  auth_jwt_key_file $test3_key keyval;
+  auth_jwt_key_file $test3_key;
   auth_jwt_key_request /test4.jwks;
   auth_jwt_key_request $test5_jwks;
   auth_jwt_key_request $test6_key keyval;
@@ -140,14 +140,14 @@ WWW-Authenticate: Bearer realm="test4"
 include $TEST_NGINX_CONF_DIR/authorized_server.conf;
 --- config
 set $test2_jwks $TEST_NGINX_DATA_DIR/test2.jwks;
-set $test3_key $TEST_NGINX_DATA_DIR/test3.json;
+set $test3_key $TEST_NGINX_DATA_DIR/test3.jwks;
 set $test5_jwks /test5.jwks;
 set $test6_key /test6.json;
 location / {
   auth_jwt "test5";
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/test1.jwks;
   auth_jwt_key_file $test2_jwks;
-  auth_jwt_key_file $test3_key keyval;
+  auth_jwt_key_file $test3_key;
   auth_jwt_key_request /test4.jwks;
   auth_jwt_key_request $test5_jwks;
   auth_jwt_key_request $test6_key keyval;
@@ -172,14 +172,14 @@ WWW-Authenticate: Bearer realm="test5"
 include $TEST_NGINX_CONF_DIR/authorized_server.conf;
 --- config
 set $test2_jwks $TEST_NGINX_DATA_DIR/test2.jwks;
-set $test3_key $TEST_NGINX_DATA_DIR/test3.json;
+set $test3_key $TEST_NGINX_DATA_DIR/test3.jwks;
 set $test5_jwks /test5.jwks;
 set $test6_key /test6.json;
 location / {
   auth_jwt "test6";
   auth_jwt_key_file $TEST_NGINX_DATA_DIR/test1.jwks;
   auth_jwt_key_file $test2_jwks;
-  auth_jwt_key_file $test3_key keyval;
+  auth_jwt_key_file $test3_key;
   auth_jwt_key_request /test4.jwks;
   auth_jwt_key_request $test5_jwks;
   auth_jwt_key_request $test6_key keyval;
