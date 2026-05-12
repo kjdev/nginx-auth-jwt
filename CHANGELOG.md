@@ -1,5 +1,29 @@
 # Changelog
 
+## [b9bf034](../../commit/b9bf034) - 2026-05-13
+
+### Changed
+
+- Replace the in-tree JWT decode, JWS verification, and JWKS parsing layers (~2400 LOC) with the `nxe-jwx` submodule. Public directive surface (`auth_jwt_*`) is unchanged
+- **Breaking:** `auth_jwt_key_file ... keyval` / `auth_jwt_key_request ... keyval` is now parsed by `nxe_jwx_jwks_parse_keyval`. It natively supports the multi-kid `{"kid1":"...","kid2":"..."}` form, but any value that previously parsed as a private key or fell back to a raw HMAC secret under the legacy parser is now rejected. HMAC secrets must be supplied via a JWKS `kty: "oct"` entry
+- **Breaking:** Signature verification adopts `nxe-jwx`'s per-keyset kid-strict policy. The legacy "kid match across all files first, then any key fallback" sequence is reproduced by two passes over the keyset list, and the `kid_tried` audit log is now emitted via `nxe_jwx_jwks_has_kid` only for keysets that actually contain the JWT's kid. Tokens whose `kid` exists in some keyset but whose signature does not verify against any keyset are still rejected; tokens with an absent / empty `kid` follow `nxe-jwx`'s explicit empty-kid handling rather than the legacy lookup heuristic
+
+### Removed
+
+- Drop `ngx_auth_jwt_decode.{c,h}`, `ngx_auth_jwt_jws.{c,h}`, and `ngx_auth_jwt_jwks.{c,h}` from the in-tree sources
+
+## [8ba4984](../../commit/8ba4984) - 2026-05-12
+
+### Changed
+
+- Bump `nxe-json` submodule to 0.3.0.
+
+## [367a7fe](../../commit/367a7fe) - 2026-05-12
+
+### Changed
+
+- Bump `nxe-jwx` submodule to 0.1.0. **Breaking:** the `keyval` key file/request format is now restricted to PEM public keys; HMAC secrets must be supplied via a JWKS `kty: "oct"` entry instead.
+
 ## [90064ca](../../commit/90064ca) - 2026-04-24
 
 ### Changed
