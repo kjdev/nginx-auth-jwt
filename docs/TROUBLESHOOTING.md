@@ -105,11 +105,18 @@ auth_jwt_key_file /etc/nginx/keys/jwks.json;         # JWKS (default)
 auth_jwt_key_file /etc/nginx/keys/keys.json keyval;  # keyval
 ```
 
-For HMAC algorithms, the keyval value must be the raw secret string (not PEM):
+HMAC algorithms cannot be used with the keyval format (values are restricted to PEM public keys). Use a JWKS `kty: "oct"` entry instead:
 
 ```json
 {
-  "my-hmac-key": "my-secret-value"
+  "keys": [
+    {
+      "kty": "oct",
+      "kid": "my-hmac-key",
+      "alg": "HS256",
+      "k": "<base64url-encoded secret>"
+    }
+  ]
 }
 ```
 

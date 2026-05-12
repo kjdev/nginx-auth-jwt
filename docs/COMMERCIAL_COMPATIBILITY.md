@@ -112,12 +112,12 @@ auth_jwt_key_file /etc/nginx/keys/jwks.json jwks;
 auth_jwt_key_file /etc/nginx/keys/keys.json keyval;
 ```
 
-keyval format is a simple JSON object mapping key IDs to key values:
+keyval format is a simple JSON object mapping key IDs to PEM public keys (HMAC secrets must be supplied via a JWKS `kty: "oct"` entry):
 
 ```json
 {
   "key-id-1": "-----BEGIN PUBLIC KEY-----\n...",
-  "hmac-key-1": "shared-secret-value"
+  "key-id-2": "-----BEGIN PUBLIC KEY-----\n..."
 }
 ```
 

@@ -33,7 +33,7 @@ Use JWKS (JSON Web Key Set) format for key management. JWKS supports key rotatio
 # Recommended: JWKS format
 auth_jwt_key_file /etc/nginx/keys/jwks.json;
 
-# Also supported: keyval format
+# Also supported: keyval format (PEM public keys only)
 auth_jwt_key_file /etc/nginx/keys/keys.json keyval;
 ```
 

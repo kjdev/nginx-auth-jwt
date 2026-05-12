@@ -81,7 +81,7 @@ Specifies a file for validating JWT signature. Parameter value can contain varia
 Specify `jwks` (default) or `keyval` as the file format:
 
 - `jwks` — [JSON Web Key Set](https://datatracker.ietf.org/doc/html/rfc7517#section-5) format
-- `keyval` — JSON in key-value format (e.g., `{"kid": "-----BEGIN PUBLIC KEY-----\nxx.."}`)
+- `keyval` — JSON in key-value format (e.g., `{"kid": "-----BEGIN PUBLIC KEY-----\nxx.."}`). **Values are restricted to PEM public keys.** Use a JWKS `kty: "oct"` entry to supply HMAC secrets.
 
 Multiple `auth_jwt_key_file` directives can be specified on the same level:
 
@@ -103,7 +103,7 @@ Allows retrieving a key from a subrequest for validating JWT signature and sets 
 Specify `jwks` (default) or `keyval` as the key format:
 
 - `jwks` — [JSON Web Key Set](https://datatracker.ietf.org/doc/html/rfc7517#section-5) format
-- `keyval` — JSON in key-value format
+- `keyval` — JSON in key-value format. **Values are restricted to PEM public keys.** Use a JWKS `kty: "oct"` entry to supply HMAC secrets.
 
 To avoid validation overhead, cache the key response using `proxy_cache`:
 
