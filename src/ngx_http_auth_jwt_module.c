@@ -2722,11 +2722,14 @@ ngx_http_auth_jwt_keystore_verify(ngx_http_auth_jwt_keystore_t *ks,
      *
      *   pass 1 — try every keyset that owns the token's kid; remember
      *            that we did so (mirrors the legacy kid_tried
-     *            out-param) and emit a single audit log line after
-     *            the pass completes without verifying.
+     *            out-param) without verifying yet.
      *   pass 2 — try the remaining (kid-less / non-matching)
      *            keysets so an unrelated key file can still verify
      *            an unsigned-by-this-kid token.
+     *
+     * A single audit log line is emitted only after both passes
+     * fail to verify, so a token that succeeds via the fallback
+     * pass is not recorded as a signature rejection.
      *
      * Either pass returns immediately on NGX_OK or NGX_ERROR.  The
      * per-keyset has_kid lookup is memoised in `has_kid_cache` so we
@@ -2762,12 +2765,6 @@ ngx_http_auth_jwt_keystore_verify(ngx_http_auth_jwt_keystore_t *ks,
 
             kid_tried = 1;
         }
-
-        if (kid_tried) {
-            ngx_log_error(NGX_LOG_INFO, log, 0,
-                          "auth_jwt: rejected due to signature validate"
-                          " failure: kid=\"%V\"", kid);
-        }
     }
 
     for (i = 0; i < ks->keysets->nelts; i++) {
@@ -2789,6 +2786,12 @@ ngx_http_auth_jwt_keystore_verify(ngx_http_auth_jwt_keystore_t *ks,
         if (rc == NGX_ERROR) {
             return NGX_ERROR;
         }
+    }
+
+    if (kid_tried) {
+        ngx_log_error(NGX_LOG_INFO, log, 0,
+                      "auth_jwt: rejected due to signature validate"
+                      " failure: kid=\"%V\"", kid);
     }
 
     return NGX_DECLINED;
