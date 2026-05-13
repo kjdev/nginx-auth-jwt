@@ -1562,10 +1562,18 @@ ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
     if (prev->key.vars) {
         if (conf->key.vars == NULL) {
             conf->key.vars = ngx_http_auth_jwt_keystore_create(cf->pool);
+            if (conf->key.vars == NULL) {
+                ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                                   "auth_jwt: failed to allocate keystore");
+                return NGX_CONF_ERROR;
+            }
         }
-        if (conf->key.vars != NULL) {
-            (void) ngx_http_auth_jwt_keystore_append(conf->key.vars,
-                                                     prev->key.vars);
+        if (ngx_http_auth_jwt_keystore_append(conf->key.vars,
+                                              prev->key.vars) != NGX_OK)
+        {
+            ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                               "auth_jwt: failed to inherit keystore");
+            return NGX_CONF_ERROR;
         }
     }
 
@@ -1781,9 +1789,17 @@ ngx_http_auth_jwt_load_keys(ngx_http_request_t *r,
 
     if (cf->key.vars) {
         ctx->keys = ngx_http_auth_jwt_keystore_create(r->pool);
-        if (ctx->keys != NULL) {
-            (void) ngx_http_auth_jwt_keystore_append(ctx->keys,
-                                                     cf->key.vars);
+        if (ctx->keys == NULL) {
+            ngx_log_error(NGX_LOG_CRIT, r->connection->log, 0,
+                          "auth_jwt: failed to allocate keystore");
+            return NGX_ERROR;
+        }
+        if (ngx_http_auth_jwt_keystore_append(ctx->keys,
+                                              cf->key.vars) != NGX_OK)
+        {
+            ngx_log_error(NGX_LOG_CRIT, r->connection->log, 0,
+                          "auth_jwt: failed to inherit keystore");
+            return NGX_ERROR;
         }
     }
 
@@ -2346,6 +2362,7 @@ ngx_http_auth_jwt_handler(ngx_http_request_t *r, ngx_int_t phase)
     ngx_http_auth_jwt_ctx_t *ctx;
     ngx_pool_cleanup_t *cleanup;
     ngx_str_t var = ngx_string("");
+    ngx_int_t rc;
 
     cf = ngx_http_get_module_loc_conf(r, ngx_http_auth_jwt_module);
 
@@ -2442,8 +2459,12 @@ ngx_http_auth_jwt_handler(ngx_http_request_t *r, ngx_int_t phase)
     }
 
     /* load keys */
-    if (ngx_http_auth_jwt_load_keys(r, cf, ctx) == NGX_AGAIN) {
+    rc = ngx_http_auth_jwt_load_keys(r, cf, ctx);
+    if (rc == NGX_AGAIN) {
         return NGX_AGAIN;
+    }
+    if (rc == NGX_ERROR) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
     /* validate */
