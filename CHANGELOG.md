@@ -1,5 +1,11 @@
 # Changelog
 
+## [b55c0c6](../../commit/b55c0c6) - 2026-05-13
+
+### Fixed
+
+- Defer the `"rejected due to signature validate failure"` audit log in `ngx_http_auth_jwt_keystore_verify` until after both verification passes complete. Previously the log was emitted as soon as pass 1 (kid-matched keysets) exhausted its candidates, so a token that subsequently verified against a pass 2 (fallback) keyset was still recorded as a rejection. The log now fires only when both passes fail, eliminating false positives in audit logs and SIEM aggregation
+
 ## [e5c7691](../../commit/e5c7691) - 2026-05-13
 
 ### Fixed
