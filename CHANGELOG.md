@@ -1,5 +1,11 @@
 # Changelog
 
+## [e5c7691](../../commit/e5c7691) - 2026-05-13
+
+### Fixed
+
+- Propagate `ngx_http_auth_jwt_keystore_create` / `_append` failures in `ngx_http_auth_jwt_merge_loc_conf` and `ngx_http_auth_jwt_load_keys`. Previously these allocation failures were silently discarded via `(void)` casts, dropping inherited or statically configured keys and surfacing the request as an auth failure. The merge path now logs `NGX_LOG_EMERG` and returns `NGX_CONF_ERROR`; the request path logs `NGX_LOG_CRIT` and returns `NGX_HTTP_INTERNAL_SERVER_ERROR`
+
 ## [b9bf034](../../commit/b9bf034) - 2026-05-13
 
 ### Changed
