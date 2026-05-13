@@ -703,7 +703,8 @@ X-Jwt-Claim-Sub: test1.identifier
 X-Jwt-Claim-Aud: test1.audience.example.com
 X-Jwt-Claim-Email: test1@example.com
 --- error_code: 200
---- error_log: auth_jwt: rejected due to signature validate failure: kid="test1"
+--- no_error_log: auth_jwt: rejected due to signature validate failure: kid="test1"
+--- log_level: info
 
 === limit_except
 --- http_config
