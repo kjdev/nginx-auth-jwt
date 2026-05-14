@@ -1,5 +1,17 @@
 # Changelog
 
+## [d22e6a1](../../commit/d22e6a1) - 2026-05-15
+
+### Changed
+
+- Drop the remaining `#include <jansson.h>` from `ngx_auth_jwt_claims.c` by adopting `nxe_json_stringify_compact_sorted` (added in `nxe-json` 0.4.0) for the `*_json` accessors. `$jwt_claim_*` / `$jwt_header_*` still serialize with deterministic key ordering, but the sort now goes through the `nxe-json` API instead of reaching down to the underlying jansson handle. `ngx_auth_jwt_claims_get_headers_json` / `_get_grants_json` gain an `ngx_pool_t *pool` parameter so the returned NUL-terminated buffer is pool-owned; `auth_jwt_get_json` and its three call sites in the HTTP module are updated to pass `r->pool`, and `free()` of the previous jansson-allocated buffer is now guarded by a `jwt_value_malloced` flag because the `segments != NULL` branch in `validate_requirement` still uses jansson `json_dumps` directly. Closes the Layer 2 nxe-json migration declared in `CLAUDE.md`
+
+## [adaf91e](../../commit/adaf91e) - 2026-05-15
+
+### Changed
+
+- Bump `nxe-json` submodule to 0.4.0. Adds `nxe_json_stringify_compact_sorted`, the `JSON_SORT_KEYS` wrapper that lets the claims layer remove its direct jansson dependency
+
 ## [b486a8d](../../commit/b486a8d) - 2026-05-15
 
 ### Fixed
