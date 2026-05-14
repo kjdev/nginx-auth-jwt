@@ -1,5 +1,11 @@
 # Changelog
 
+## [b486a8d](../../commit/b486a8d) - 2026-05-15
+
+### Fixed
+
+- Eliminate the duplicate base64url + JSON parse that `ngx_http_auth_jwt_decode_token` performed on every JWT. nxe-jwx already parses the header and payload via nxe-json during `nxe_jwx_decode`; the module previously ran a second decode through `ngx_http_auth_jwt_segment_to_json` solely because Layer 2 (claims / field) consumed jansson types directly. The Layer 2 interface now uses the `nxe_json_t` opaque handle, `ngx_auth_jwt_t` borrows the trees from `nxe_jwx_token_header()` / `nxe_jwx_token_payload()`, and `ngx_auth_jwt_field_resolve` plus the claims / field accessors traverse via `nxe_json_object_get` / `nxe_json_array_get`. The `segment_to_json` helper and its `json_decref` pool cleanup are removed, and `alg` / `kid` lookups in the validation path now reuse `nxe_jwx_token_alg` / `nxe_jwx_token_kid`. The `algorithm` / `kid` locals (and the `validate_requirement` `algorithm` out-parameter) are kept as `const ngx_str_t *` and compared with length-aware `ngx_strncmp` (`len == sizeof(literal) - 1 && ngx_strncmp(data, literal, len) == 0`) instead of casting `data` to `const char *` and calling `ngx_strcmp`, since the nxe-jwx accessors do not document NUL-termination (issue #021, interim mitigation)
+
 ## [b55c0c6](../../commit/b55c0c6) - 2026-05-13
 
 ### Fixed
