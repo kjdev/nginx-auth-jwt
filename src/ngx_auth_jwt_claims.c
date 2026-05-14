@@ -1,16 +1,13 @@
 #include <errno.h>
-#include <jansson.h>
 #include <string.h>
 #include "ngx_auth_jwt_claims.h"
 
 /*
- * Layer 2 consumes the JWT view as opaque nxe_json_t handles.  For the
- * key-path traversal and scalar extraction below we use the nxe_json
- * API.  json_dumps() is still used for the *_json accessors because
- * nxe-json does not yet expose JSON_SORT_KEYS, and deterministic
- * ordering is a user-visible contract of $jwt_claim_* / $jwt_header_*
- * variables (asserted by t/auth_jwt_claims.t).  When nxe-json gains a
- * sorted stringify, drop the jansson include entirely.
+ * Layer 2 consumes the JWT view as opaque nxe_json_t handles and uses
+ * the nxe_json API throughout: key-path traversal, scalar extraction,
+ * and sorted-compact serialization for the *_json accessors.  Sorted
+ * output is a user-visible contract of $jwt_claim_* / $jwt_header_*
+ * variables (asserted by t/auth_jwt_claims.t).
  */
 static nxe_json_t *
 get_js_json(nxe_json_t *js, const char *key,
@@ -129,7 +126,7 @@ get_js_string(nxe_json_t *js, const char *key,
         return NULL;
     }
 
-    /* nxe_json_string returns data backed by jansson storage which is
+    /* nxe_json_string returns data backed by nxe_json storage which is
      * NUL-terminated at value.len; safe to expose as const char *. */
     return (const char *) value.data;
 }
@@ -187,13 +184,34 @@ get_js_bool(nxe_json_t *js, const char *key,
 }
 
 static char *
-dump_js_sorted_compact(nxe_json_t *js)
+dump_js_sorted_compact(nxe_json_t *js, ngx_pool_t *pool)
 {
-    /* nxe-json lacks a JSON_SORT_KEYS option; reach down to the
-     * underlying jansson handle to keep $jwt_*_set output deterministic.
-     * Drop this once nxe-json exposes a sorted stringify. */
-    return json_dumps((const json_t *) js,
-                      JSON_SORT_KEYS | JSON_COMPACT | JSON_ENCODE_ANY);
+    ngx_str_t *str;
+    char *out;
+
+    if (pool == NULL) {
+        errno = EINVAL;
+        return NULL;
+    }
+
+    str = nxe_json_stringify_compact_sorted(js, pool);
+    if (str == NULL) {
+        return NULL;
+    }
+
+    /* nxe_json_stringify_* returns a non-NUL-terminated ngx_str_t on the
+     * pool.  Callers here expect a NUL-terminated C string (strlen,
+     * ngx_strchr, in-place character stripping), so copy with a trailing
+     * NUL on the same pool. */
+    out = ngx_pnalloc(pool, str->len + 1);
+    if (out == NULL) {
+        return NULL;
+    }
+
+    ngx_memcpy(out, str->data, str->len);
+    out[str->len] = '\0';
+
+    return out;
 }
 
 const char *
@@ -240,7 +258,7 @@ ngx_auth_jwt_claims_get_header_bool(ngx_auth_jwt_t *jwt, const char *header,
 
 char *
 ngx_auth_jwt_claims_get_headers_json(ngx_auth_jwt_t *jwt, const char *header,
-    const char *delim, const char *quote)
+    const char *delim, const char *quote, ngx_pool_t *pool)
 {
     nxe_json_t *js_val = NULL;
 
@@ -257,7 +275,7 @@ ngx_auth_jwt_claims_get_headers_json(ngx_auth_jwt_t *jwt, const char *header,
 
     errno = 0;
 
-    return dump_js_sorted_compact(js_val);
+    return dump_js_sorted_compact(js_val, pool);
 }
 
 const char *
@@ -304,7 +322,7 @@ ngx_auth_jwt_claims_get_grant_bool(ngx_auth_jwt_t *jwt, const char *grant,
 
 char *
 ngx_auth_jwt_claims_get_grants_json(ngx_auth_jwt_t *jwt, const char *grant,
-    const char *delim, const char *quote)
+    const char *delim, const char *quote, ngx_pool_t *pool)
 {
     nxe_json_t *js_val = NULL;
 
@@ -321,5 +339,5 @@ ngx_auth_jwt_claims_get_grants_json(ngx_auth_jwt_t *jwt, const char *grant,
 
     errno = 0;
 
-    return dump_js_sorted_compact(js_val);
+    return dump_js_sorted_compact(js_val, pool);
 }

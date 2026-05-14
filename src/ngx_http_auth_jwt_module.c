@@ -163,7 +163,7 @@ typedef struct {
 typedef const char *(*auth_jwt_get)(ngx_auth_jwt_t *jwt, const char *key,
     const char *delim, const char *quote);
 typedef char *(*auth_jwt_get_json)(ngx_auth_jwt_t *jwt, const char *key,
-    const char *delim, const char *quote);
+    const char *delim, const char *quote, ngx_pool_t *pool);
 
 static ngx_conf_enum_t ngx_http_auth_jwt_phases[] = {
     { ngx_string("PREACCESS"), NGX_HTTP_PREACCESS_PHASE },
@@ -623,7 +623,8 @@ ngx_http_auth_jwt_variable_find(ngx_http_request_t *r,
         size_t i, t;
 
         str = (*jwt_get_json)(ctx->jwt, (char *) key,
-                              cf->nested.delimiter, cf->nested.quote);
+                              cf->nested.delimiter, cf->nested.quote,
+                              r->pool);
         if (str == NULL) {
             v->not_found = 1;
             return NGX_OK;
@@ -651,16 +652,9 @@ ngx_http_auth_jwt_variable_find(ngx_http_request_t *r,
     len = strlen(value);
     data = ngx_pcalloc(r->pool, len + 1);
     if (data == NULL) {
-        if (str) {
-            free(str);
-        }
         return NGX_ERROR;
     }
     ngx_memcpy(data, value, len);
-
-    if (str) {
-        free(str);
-    }
 
     v->data = data;
     v->len = len;
@@ -1903,7 +1897,8 @@ ngx_http_auth_jwt_get_grant_time(ngx_http_request_t *r, ngx_auth_jwt_t *jwt,
     if (val == -1) {
         char *var;
 
-        var = ngx_auth_jwt_claims_get_grants_json(jwt, claim, delimiter, quote);
+        var = ngx_auth_jwt_claims_get_grants_json(jwt, claim, delimiter, quote,
+                                                  r->pool);
         if (var) {
             size_t n;
             u_char *p;
@@ -1916,8 +1911,6 @@ ngx_http_auth_jwt_get_grant_time(ngx_http_request_t *r, ngx_auth_jwt_t *jwt,
             }
 
             val = ngx_atotm((u_char *) var, n);
-
-            free(var);
         }
     }
 
@@ -1997,6 +1990,12 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
         json_t *jwt_value_json = NULL, *expected_json = NULL;
         ngx_str_t value = ngx_null_string;
         ngx_flag_t json = 0;
+        /*
+         * Tracks whether jwt_value is malloc-owned and needs free().
+         * Claims layer (segments == NULL branch) hands back pool-owned
+         * memory, so only the field-resolved branch below needs cleanup.
+         */
+        ngx_flag_t jwt_value_malloced = 0;
 
         if (ngx_http_complex_value(r, requirement[i].value, &value) != NGX_OK
             || !value.data || value.len == 0)
@@ -2056,9 +2055,11 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
                 json_delete(jwt_value_json);
                 return NGX_ERROR;
             }
+            jwt_value_malloced = 1;
         } else {
             jwt_value = jwt_get_json(ctx->jwt, requirement[i].name,
-                                     cf->nested.delimiter, cf->nested.quote);
+                                     cf->nested.delimiter, cf->nested.quote,
+                                     r->pool);
             if (jwt_value == NULL) {
                 ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                               "auth_jwt: rejected due to missing %s: %s",
@@ -2070,7 +2071,6 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
                 ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                               "auth_jwt: failed to json load jwt %s: %s",
                               requirement_type, requirement[i].name);
-                free(jwt_value);
                 return NGX_ERROR;
             }
         }
@@ -2085,7 +2085,9 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                           "auth_jwt: failed to json load %s requirement: %s",
                           requirement_type, requirement[i].name);
-            free(jwt_value);
+            if (jwt_value_malloced) {
+                free(jwt_value);
+            }
             json_delete(jwt_value_json);
             return NGX_ERROR;
         }
@@ -2102,7 +2104,9 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
                                       "auth_jwt: failed to json reload"
                                       " jwt %s requirement: %s",
                                       requirement_type, requirement[i].name);
-                        free(jwt_value);
+                        if (jwt_value_malloced) {
+                            free(jwt_value);
+                        }
                         json_delete(jwt_value_json);
                         return NGX_ERROR;
                     }
@@ -2117,7 +2121,9 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
                                       "auth_jwt: failed to json reload"
                                       " jwt %s requirement: %s",
                                       requirement_type, requirement[i].name);
-                        free(jwt_value);
+                        if (jwt_value_malloced) {
+                            free(jwt_value);
+                        }
                         json_delete(jwt_value_json);
                         return NGX_ERROR;
                     }
@@ -2143,14 +2149,18 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
                               ": \"%s\" is not \"%s\" \"%V\"",
                               requirement[i].name, requirement_type, jwt_value,
                               requirement[i].operator, &value);
-                free(jwt_value);
+                if (jwt_value_malloced) {
+                    free(jwt_value);
+                }
                 json_delete(jwt_value_json);
                 json_delete(expected_json);
                 return NGX_ERROR;
             }
         }
 
-        free(jwt_value);
+        if (jwt_value_malloced) {
+            free(jwt_value);
+        }
         json_delete(jwt_value_json);
         json_delete(expected_json);
 
