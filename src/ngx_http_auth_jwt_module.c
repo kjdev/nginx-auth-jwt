@@ -42,9 +42,6 @@ static ngx_int_t ngx_http_auth_jwt_keystore_verify(
 static ngx_int_t ngx_http_auth_jwt_decode_token(ngx_http_request_t *r,
     u_char *token, size_t token_len,
     nxe_jwx_token_t **out_jwx, ngx_auth_jwt_t **out_jwt);
-static void ngx_http_auth_jwt_jansson_cleanup(void *data);
-static json_t *ngx_http_auth_jwt_segment_to_json(ngx_pool_t *pool,
-    const u_char *src, size_t src_len);
 
 #define NGX_HTTP_AUTH_JWT_CLAIM_VAR_PREFIX "jwt_claim_"
 #define NGX_HTTP_AUTH_JWT_HEADER_VAR_PREFIX "jwt_header_"
@@ -1638,10 +1635,9 @@ ngx_http_auth_jwt_exit_process(ngx_cycle_t *cycle)
  * Sentinel cleanup handler for the per-request module context.
  *
  * This function intentionally does no work: ctx->jwt holds borrowed
- * references to jansson trees that are tied to a pool cleanup handler
- * installed in ngx_http_auth_jwt_decode_token, and ctx->jwx_token /
- * ctx->keys are owned by the request pool and freed when it is
- * destroyed.
+ * references to nxe_json trees owned by ctx->jwx_token, and
+ * ctx->jwx_token / ctx->keys are themselves owned by the request pool,
+ * so everything is released automatically when the pool is destroyed.
  *
  * It must remain registered, however, because ngx_http_auth_jwt_get_
  * module_ctx() locates the module context after a context reset by
@@ -1977,7 +1973,7 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
     ngx_http_auth_jwt_loc_conf_t *cf,
     ngx_http_auth_jwt_ctx_t *ctx,
     ngx_array_t *requirements,
-    const char **algorithm,
+    const ngx_str_t **algorithm,
     const auth_jwt_get_json jwt_get_json)
 {
     ngx_uint_t i;
@@ -2029,7 +2025,7 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
         }
 
         if (requirement[i].segments != NULL) {
-            json_t *root, *resolved;
+            nxe_json_t *root, *resolved;
 
             root = (jwt_get_json == ngx_auth_jwt_claims_get_grants_json)
                    ? ctx->jwt->payload : ctx->jwt->headers;
@@ -2043,7 +2039,7 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
                 return NGX_ERROR;
             }
 
-            jwt_value_json = json_deep_copy(resolved);
+            jwt_value_json = json_deep_copy((const json_t *) resolved);
             if (jwt_value_json == NULL) {
                 ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                               "auth_jwt: failed to copy jwt %s: %s",
@@ -2162,7 +2158,11 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
             // NOTE: only header requirement
             if (ngx_strcmp("alg", requirement[i].name) == 0) {
                 // NOTE: allow NONE algorithm when passing alg requirements
-                if (*algorithm != NULL && ngx_strcmp(*algorithm, "none") == 0) {
+                if (*algorithm != NULL
+                    && (*algorithm)->len == sizeof("none") - 1
+                    && ngx_strncmp((*algorithm)->data, "none",
+                                   (*algorithm)->len) == 0)
+                {
                     cf->validate.sig = 0;
                 }
                 // NOTE: do not verify algorithm if alg requirements are met
@@ -2179,8 +2179,8 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
     ngx_http_auth_jwt_loc_conf_t *cf,
     ngx_http_auth_jwt_ctx_t *ctx)
 {
-    const char *algorithm;
-    const char *kid = NULL;
+    const ngx_str_t *algorithm;
+    const ngx_str_t *kid = NULL;
 
     if (!cf || !ctx) {
         ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
@@ -2188,17 +2188,23 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
         return NGX_ERROR;
     }
 
-    algorithm = json_string_value(json_object_get(ctx->jwt->headers, "alg"));
+    /* nxe_jwx_token_alg / _kid return ngx_str_t whose data is not
+     * documented as NUL-terminated; keep the values as ngx_str_t * and
+     * compare with length-aware helpers (issue #021). */
+    algorithm = nxe_jwx_token_alg(ctx->jwx_token);
 
     if (cf->revocation.subs != NULL) {
         json_t *value = NULL;
         const char *revocation_sub;
-        const char *jwt_sub =
-            json_string_value(json_object_get(ctx->jwt->payload, "sub"));
+        const char *jwt_sub;
+        nxe_json_t *sub_v;
+        ngx_str_t sub_str;
 
-        if (jwt_sub == NULL) {
+        sub_v = nxe_json_object_get(ctx->jwt->payload, "sub");
+        if (sub_v == NULL || nxe_json_string(sub_v, &sub_str) != NGX_OK) {
             return NGX_ERROR;
         }
+        jwt_sub = (const char *) sub_str.data;
 
         json_object_foreach(cf->revocation.subs, revocation_sub, value) {
             if (ngx_strcmp(jwt_sub, revocation_sub) == 0) {
@@ -2214,22 +2220,26 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
         }
     }
 
-    kid = json_string_value(json_object_get(ctx->jwt->headers, "kid"));
+    kid = nxe_jwx_token_kid(ctx->jwx_token);
 
     if (cf->revocation.kids != NULL) {
         json_t *value = NULL;
         const char *revocation_kid;
+        size_t revocation_kid_len;
 
         // note that revocation_kids turn on kid to required header
-        if (kid == NULL || ngx_strcmp(kid, "") == 0) {
+        if (kid == NULL || kid->len == 0) {
             ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
                           "auth_jwt: rejected due to kid cannot be empty"
-                          " when revocation_kids set", kid);
+                          " when revocation_kids set");
             return NGX_ERROR;
         }
 
         json_object_foreach(cf->revocation.kids, revocation_kid, value) {
-            if (ngx_strcmp(kid, revocation_kid) == 0) {
+            revocation_kid_len = ngx_strlen(revocation_kid);
+            if (kid->len == revocation_kid_len
+                && ngx_strncmp(kid->data, revocation_kid, kid->len) == 0)
+            {
                 char *msg = json_dumps(value, JSON_COMPACT);
                 ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
                               "auth_jwt: rejected due to kid in revocation list"
@@ -2286,7 +2296,10 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
     }
 
     /* rejected none algorithm */
-    if (algorithm != NULL && ngx_strcmp(algorithm, "none") == 0) {
+    if (algorithm != NULL
+        && algorithm->len == sizeof("none") - 1
+        && ngx_strncmp(algorithm->data, "none", algorithm->len) == 0)
+    {
         ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
                       "auth_jwt: rejected due to none algorithm");
         return NGX_ERROR;
@@ -2306,8 +2319,7 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
 
     /* re-read algorithm if it was cleared by alg requirement validation */
     if (algorithm == NULL) {
-        algorithm = json_string_value(json_object_get(ctx->jwt->headers,
-                                                      "alg"));
+        algorithm = nxe_jwx_token_alg(ctx->jwx_token);
     }
 
     if (algorithm == NULL) {
@@ -2476,60 +2488,6 @@ ngx_http_auth_jwt_handler(ngx_http_request_t *r, ngx_int_t phase)
 }
 
 
-/*
- * Pool cleanup hook that releases the jansson trees attached to a
- * decoded JWT.  The struct itself lives on the request pool.
- */
-static void
-ngx_http_auth_jwt_jansson_cleanup(void *data)
-{
-    ngx_auth_jwt_t *jwt = data;
-
-    if (jwt == NULL) {
-        return;
-    }
-
-    if (jwt->headers != NULL) {
-        json_decref(jwt->headers);
-        jwt->headers = NULL;
-    }
-
-    if (jwt->payload != NULL) {
-        json_decref(jwt->payload);
-        jwt->payload = NULL;
-    }
-}
-
-
-/*
- * Decode a JWT segment as base64url and parse the result as JSON
- * (jansson view).  Mirrors what nxe-jwx already did for nxe_json so
- * the validation layer can keep relying on jansson while signature
- * verification goes through nxe-jwx.
- */
-static json_t *
-ngx_http_auth_jwt_segment_to_json(ngx_pool_t *pool,
-    const u_char *src, size_t src_len)
-{
-    ngx_str_t encoded, decoded;
-
-    encoded.data = (u_char *) src;
-    encoded.len = src_len;
-
-    decoded.data = ngx_pnalloc(pool, ngx_base64_decoded_length(src_len) + 1);
-    if (decoded.data == NULL) {
-        return NULL;
-    }
-
-    if (ngx_decode_base64url(&decoded, &encoded) != NGX_OK) {
-        return NULL;
-    }
-
-    return json_loadb((char *) decoded.data, decoded.len,
-                      JSON_REJECT_DUPLICATES, NULL);
-}
-
-
 static ngx_int_t
 ngx_http_auth_jwt_decode_token(ngx_http_request_t *r,
     u_char *token, size_t token_len,
@@ -2538,8 +2496,6 @@ ngx_http_auth_jwt_decode_token(ngx_http_request_t *r,
     nxe_jwx_token_t *jwx;
     ngx_auth_jwt_t *jwt;
     ngx_str_t token_str;
-    ngx_pool_cleanup_t *cln;
-    u_char *p, *body, *sig;
 
     if (out_jwx == NULL || out_jwt == NULL) {
         return NGX_ERROR;
@@ -2556,44 +2512,23 @@ ngx_http_auth_jwt_decode_token(ngx_http_request_t *r,
         return NGX_ERROR;
     }
 
-    /*
-     * Locate the segment boundaries in the raw token to feed the
-     * jansson view.  nxe_jwx_decode already validated that there are
-     * exactly three segments and that they fit within the size
-     * limits, so failing to find dots here would be a logic error.
-     */
-    p = ngx_strlchr(token, token + token_len, '.');
-    if (p == NULL) {
-        return NGX_ERROR;
-    }
-    body = p + 1;
-
-    sig = ngx_strlchr(body, token + token_len, '.');
-    if (sig == NULL) {
-        return NGX_ERROR;
-    }
-
     jwt = ngx_pcalloc(r->pool, sizeof(ngx_auth_jwt_t));
     if (jwt == NULL) {
         return NGX_ERROR;
     }
 
-    cln = ngx_pool_cleanup_add(r->pool, 0);
-    if (cln == NULL) {
-        return NGX_ERROR;
-    }
-    cln->handler = ngx_http_auth_jwt_jansson_cleanup;
-    cln->data = jwt;
-
-    jwt->headers = ngx_http_auth_jwt_segment_to_json(r->pool, token,
-                                                     (size_t) (p - token));
-    if (jwt->headers == NULL || !json_is_object(jwt->headers)) {
+    /*
+     * Borrow the parsed header / payload trees from nxe_jwx_token.
+     * The token (and its JSON trees) live until the request pool is
+     * destroyed, so no separate cleanup hook is needed.
+     */
+    jwt->headers = nxe_jwx_token_header(jwx);
+    if (jwt->headers == NULL || !nxe_json_is_object(jwt->headers)) {
         return NGX_ERROR;
     }
 
-    jwt->payload = ngx_http_auth_jwt_segment_to_json(r->pool, body,
-                                                     (size_t) (sig - body));
-    if (jwt->payload == NULL || !json_is_object(jwt->payload)) {
+    jwt->payload = nxe_jwx_token_payload(jwx);
+    if (jwt->payload == NULL || !nxe_json_is_object(jwt->payload)) {
         return NGX_ERROR;
     }
 

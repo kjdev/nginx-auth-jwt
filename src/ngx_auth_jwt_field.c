@@ -215,11 +215,11 @@ ngx_auth_jwt_field_parse(ngx_pool_t *pool, const char *path, size_t len,
 }
 
 
-json_t *
-ngx_auth_jwt_field_resolve(json_t *root,
+nxe_json_t *
+ngx_auth_jwt_field_resolve(nxe_json_t *root,
     ngx_auth_jwt_field_segment_t *segments, size_t nsegments)
 {
-    json_t *current;
+    nxe_json_t *current;
     size_t i;
 
     if (root == NULL || segments == NULL || nsegments == 0) {
@@ -235,18 +235,18 @@ ngx_auth_jwt_field_resolve(json_t *root,
 
         switch (segments[i].type) {
         case NGX_AUTH_JWT_FIELD_KEY:
-            if (!json_is_object(current)) {
+            if (!nxe_json_is_object(current)) {
                 return NULL;
             }
-            current = json_object_get(current,
-                                      segments[i].u.key.name);
+            current = nxe_json_object_get(current,
+                                          segments[i].u.key.name);
             break;
 
         case NGX_AUTH_JWT_FIELD_INDEX:
-            if (!json_is_array(current)) {
+            if (!nxe_json_is_array(current)) {
                 return NULL;
             }
-            current = json_array_get(current, segments[i].u.index);
+            current = nxe_json_array_get(current, segments[i].u.index);
             break;
         }
     }

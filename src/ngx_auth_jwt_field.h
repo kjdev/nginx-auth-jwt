@@ -8,7 +8,7 @@
 
 #include <ngx_config.h>
 #include <ngx_core.h>
-#include <jansson.h>
+#include <nxe_json.h>
 
 typedef enum {
     NGX_AUTH_JWT_FIELD_KEY,      /* .key or ."quoted.key" */
@@ -32,7 +32,7 @@ ngx_int_t ngx_auth_jwt_field_parse(ngx_pool_t *pool,
     const char *path, size_t len,
     ngx_auth_jwt_field_segment_t **segments, size_t *nsegments);
 
-json_t *ngx_auth_jwt_field_resolve(json_t *root,
+nxe_json_t *ngx_auth_jwt_field_resolve(nxe_json_t *root,
     ngx_auth_jwt_field_segment_t *segments, size_t nsegments);
 
 #endif /* NGX_AUTH_JWT_FIELD_H */

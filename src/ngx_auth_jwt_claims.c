@@ -3,20 +3,29 @@
 #include <string.h>
 #include "ngx_auth_jwt_claims.h"
 
-static json_t *
-get_js_json(const json_t *js, const char *key,
+/*
+ * Layer 2 consumes the JWT view as opaque nxe_json_t handles.  For the
+ * key-path traversal and scalar extraction below we use the nxe_json
+ * API.  json_dumps() is still used for the *_json accessors because
+ * nxe-json does not yet expose JSON_SORT_KEYS, and deterministic
+ * ordering is a user-visible contract of $jwt_claim_* / $jwt_header_*
+ * variables (asserted by t/auth_jwt_claims.t).  When nxe-json gains a
+ * sorted stringify, drop the jansson include entirely.
+ */
+static nxe_json_t *
+get_js_json(nxe_json_t *js, const char *key,
     const char *delim, const char *quote)
 {
-    json_t *js_val = NULL;
+    nxe_json_t *js_val = NULL;
 
     if (!js) {
         return NULL;
     }
 
-    js_val = (json_t *) js;
+    js_val = js;
 
     if (key && strlen(key) && js_val != NULL) {
-        json_t *js_obj = NULL;
+        nxe_json_t *js_obj = NULL;
 
         if (delim && delim[0] != '\0') {
             char *s = NULL, *var = NULL, *seg = NULL;
@@ -70,7 +79,7 @@ get_js_json(const json_t *js, const char *key,
                 }
 
                 if (seg[0] != '\0') {
-                    js_obj = json_object_get(js_val, seg);
+                    js_obj = nxe_json_object_get(js_val, seg);
                     if (js_obj == NULL) {
                         js_val = NULL;
                         break;
@@ -81,7 +90,7 @@ get_js_json(const json_t *js, const char *key,
 
             free(var);
         } else {
-            js_obj = json_object_get(js_val, key);
+            js_obj = nxe_json_object_get(js_val, key);
             if (js_obj == NULL) {
                 js_val = NULL;
             } else {
@@ -98,11 +107,11 @@ get_js_json(const json_t *js, const char *key,
 }
 
 static const char *
-get_js_string(const json_t *js, const char *key,
+get_js_string(nxe_json_t *js, const char *key,
     const char *delim, const char *quote)
 {
-    const char *val = NULL;
-    json_t *js_val = NULL;
+    nxe_json_t *js_val = NULL;
+    ngx_str_t value;
 
     if (!key || !strlen(key)) {
         errno = EINVAL;
@@ -115,21 +124,22 @@ get_js_string(const json_t *js, const char *key,
         return NULL;
     }
 
-    if (json_typeof(js_val) == JSON_STRING) {
-        val = json_string_value(js_val);
-    } else {
+    if (nxe_json_string(js_val, &value) != NGX_OK) {
         errno = EINVAL;
+        return NULL;
     }
 
-    return val;
+    /* nxe_json_string returns data backed by jansson storage which is
+     * NUL-terminated at value.len; safe to expose as const char *. */
+    return (const char *) value.data;
 }
 
 static long
-get_js_int(const json_t *js, const char *key,
+get_js_int(nxe_json_t *js, const char *key,
     const char *delim, const char *quote)
 {
-    long val = -1;
-    json_t *js_val = NULL;
+    nxe_json_t *js_val = NULL;
+    int64_t value;
 
     if (!key || !strlen(key)) {
         errno = EINVAL;
@@ -142,21 +152,20 @@ get_js_int(const json_t *js, const char *key,
         return 0;
     }
 
-    if (json_typeof(js_val) == JSON_INTEGER) {
-        val = (long) json_integer_value(js_val);
-    } else {
+    if (nxe_json_integer(js_val, &value) != NGX_OK) {
         errno = EINVAL;
+        return -1;
     }
 
-    return val;
+    return (long) value;
 }
 
 static int
-get_js_bool(const json_t *js, const char *key,
+get_js_bool(nxe_json_t *js, const char *key,
     const char *delim, const char *quote)
 {
-    int val = 0;
-    json_t *js_val = NULL;
+    nxe_json_t *js_val = NULL;
+    ngx_flag_t value;
 
     if (!key || !strlen(key)) {
         errno = EINVAL;
@@ -169,19 +178,22 @@ get_js_bool(const json_t *js, const char *key,
         return 0;
     }
 
-    switch (json_typeof(js_val)) {
-    case JSON_TRUE:
-        val = 1;
-        break;
-    case JSON_FALSE:
-        val = 0;
-        break;
-    default:
+    if (nxe_json_boolean(js_val, &value) != NGX_OK) {
         errno = EINVAL;
-        val = 0;
+        return 0;
     }
 
-    return val;
+    return value ? 1 : 0;
+}
+
+static char *
+dump_js_sorted_compact(nxe_json_t *js)
+{
+    /* nxe-json lacks a JSON_SORT_KEYS option; reach down to the
+     * underlying jansson handle to keep $jwt_*_set output deterministic.
+     * Drop this once nxe-json exposes a sorted stringify. */
+    return json_dumps((const json_t *) js,
+                      JSON_SORT_KEYS | JSON_COMPACT | JSON_ENCODE_ANY);
 }
 
 const char *
@@ -230,7 +242,7 @@ char *
 ngx_auth_jwt_claims_get_headers_json(ngx_auth_jwt_t *jwt, const char *header,
     const char *delim, const char *quote)
 {
-    json_t *js_val = NULL;
+    nxe_json_t *js_val = NULL;
 
     if (!jwt) {
         errno = EINVAL;
@@ -245,7 +257,7 @@ ngx_auth_jwt_claims_get_headers_json(ngx_auth_jwt_t *jwt, const char *header,
 
     errno = 0;
 
-    return json_dumps(js_val, JSON_SORT_KEYS | JSON_COMPACT | JSON_ENCODE_ANY);
+    return dump_js_sorted_compact(js_val);
 }
 
 const char *
@@ -294,7 +306,7 @@ char *
 ngx_auth_jwt_claims_get_grants_json(ngx_auth_jwt_t *jwt, const char *grant,
     const char *delim, const char *quote)
 {
-    json_t *js_val = NULL;
+    nxe_json_t *js_val = NULL;
 
     if (!jwt) {
         errno = EINVAL;
@@ -309,5 +321,5 @@ ngx_auth_jwt_claims_get_grants_json(ngx_auth_jwt_t *jwt, const char *grant,
 
     errno = 0;
 
-    return json_dumps(js_val, JSON_SORT_KEYS | JSON_COMPACT | JSON_ENCODE_ANY);
+    return dump_js_sorted_compact(js_val);
 }

@@ -7,23 +7,22 @@
 
 #include <ngx_config.h>
 #include <ngx_core.h>
-#include <jansson.h>
+#include <nxe_json.h>
 
 
 /*
  * View of a parsed JWT exposed to the validation layer (claims, field,
  * operator, http module).  Token decoding itself is delegated to
- * nxe_jwx; the http module copies the parsed header / payload trees
- * into this opaque-ish struct so the existing claims API stays stable.
+ * nxe_jwx; this struct holds borrowed references into the
+ * nxe_jwx_token_t header / payload trees so the validation layer can
+ * traverse them without re-parsing.
  *
- * `headers` and `payload` are jansson values that the http module
- * loads independently of nxe_jwx (so we never assume the nxe_json
- * opaque is implemented on top of jansson).  Memory is owned by the
- * request pool via a cleanup handler that calls json_decref.
+ * `headers` and `payload` are owned by the nxe_jwx_token attached to
+ * the request pool; this struct does not free them.
  */
 typedef struct {
-    json_t *headers;
-    json_t *payload;
+    nxe_json_t *headers;
+    nxe_json_t *payload;
 } ngx_auth_jwt_t;
 
 
