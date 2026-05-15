@@ -1,5 +1,11 @@
 # Changelog
 
+## [4880419](../../commit/4880419) - 2026-05-15
+
+### Changed
+
+- Drop the redundant `ngx_pnalloc(len + 1)` + `ngx_memcpy` in `dump_js_sorted_compact` (`ngx_auth_jwt_claims.c`). `nxe_json_stringify_compact_sorted` returns a buffer with `data[len] == '\0'` since the nxe-json 0.4.1 bump, so the helper can return `str->data` straight to its callers (`ngx_auth_jwt_claims_get_grants_json` / `_get_headers_json`) without duplicating the canonical string for every `$jwt_claim_*` / `$jwt_header_*` variable access
+
 ## [4796499](../../commit/4796499) - 2026-05-15
 
 ### Fixed
