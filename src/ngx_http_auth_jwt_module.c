@@ -1990,12 +1990,6 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
         json_t *jwt_value_json = NULL, *expected_json = NULL;
         ngx_str_t value = ngx_null_string;
         ngx_flag_t json = 0;
-        /*
-         * Tracks whether jwt_value is malloc-owned and needs free().
-         * Claims layer (segments == NULL branch) hands back pool-owned
-         * memory, so only the field-resolved branch below needs cleanup.
-         */
-        ngx_flag_t jwt_value_malloced = 0;
 
         if (ngx_http_complex_value(r, requirement[i].value, &value) != NGX_OK
             || !value.data || value.len == 0)
@@ -2025,6 +2019,7 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
 
         if (requirement[i].segments != NULL) {
             nxe_json_t *root, *resolved;
+            ngx_str_t *serialized;
 
             root = (jwt_get_json == ngx_auth_jwt_claims_get_grants_json)
                    ? ctx->jwt->payload : ctx->jwt->headers;
@@ -2038,24 +2033,26 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
                 return NGX_ERROR;
             }
 
-            jwt_value_json = json_deep_copy((const json_t *) resolved);
+            /* nxe_json -> 文字列 -> jansson の bridge。resolved を
+             * (json_t *) にキャストして jansson に渡すのは nxe-json の
+             * opaque 契約違反（UB）なので、まず canonical な文字列に
+             * シリアライズしてから json_loads で jansson 値を生成する。
+             * バッファは r->pool 所有で nul 終端済み（nxe-json 0.4.1）。 */
+            serialized = nxe_json_stringify_compact_sorted(resolved, r->pool);
+            if (serialized == NULL) {
+                ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                              "auth_jwt: failed to serialize jwt %s: %s",
+                              requirement_type, requirement[i].name);
+                return NGX_ERROR;
+            }
+            jwt_value = (char *) serialized->data;
+            jwt_value_json = json_loads(jwt_value, JSON_DECODE_ANY, NULL);
             if (jwt_value_json == NULL) {
                 ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                              "auth_jwt: failed to copy jwt %s: %s",
+                              "auth_jwt: failed to json load jwt %s: %s",
                               requirement_type, requirement[i].name);
                 return NGX_ERROR;
             }
-            jwt_value = json_dumps(jwt_value_json,
-                                   JSON_SORT_KEYS | JSON_COMPACT
-                                   | JSON_ENCODE_ANY);
-            if (jwt_value == NULL) {
-                ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                              "auth_jwt: failed to dump jwt %s: %s",
-                              requirement_type, requirement[i].name);
-                json_delete(jwt_value_json);
-                return NGX_ERROR;
-            }
-            jwt_value_malloced = 1;
         } else {
             jwt_value = jwt_get_json(ctx->jwt, requirement[i].name,
                                      cf->nested.delimiter, cf->nested.quote,
@@ -2085,9 +2082,6 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                           "auth_jwt: failed to json load %s requirement: %s",
                           requirement_type, requirement[i].name);
-            if (jwt_value_malloced) {
-                free(jwt_value);
-            }
             json_delete(jwt_value_json);
             return NGX_ERROR;
         }
@@ -2104,9 +2098,6 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
                                       "auth_jwt: failed to json reload"
                                       " jwt %s requirement: %s",
                                       requirement_type, requirement[i].name);
-                        if (jwt_value_malloced) {
-                            free(jwt_value);
-                        }
                         json_delete(jwt_value_json);
                         return NGX_ERROR;
                     }
@@ -2121,9 +2112,6 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
                                       "auth_jwt: failed to json reload"
                                       " jwt %s requirement: %s",
                                       requirement_type, requirement[i].name);
-                        if (jwt_value_malloced) {
-                            free(jwt_value);
-                        }
                         json_delete(jwt_value_json);
                         return NGX_ERROR;
                     }
@@ -2149,18 +2137,12 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
                               ": \"%s\" is not \"%s\" \"%V\"",
                               requirement[i].name, requirement_type, jwt_value,
                               requirement[i].operator, &value);
-                if (jwt_value_malloced) {
-                    free(jwt_value);
-                }
                 json_delete(jwt_value_json);
                 json_delete(expected_json);
                 return NGX_ERROR;
             }
         }
 
-        if (jwt_value_malloced) {
-            free(jwt_value);
-        }
         json_delete(jwt_value_json);
         json_delete(expected_json);
 
