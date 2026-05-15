@@ -187,7 +187,6 @@ static char *
 dump_js_sorted_compact(nxe_json_t *js, ngx_pool_t *pool)
 {
     ngx_str_t *str;
-    char *out;
 
     if (pool == NULL) {
         errno = EINVAL;
@@ -199,19 +198,11 @@ dump_js_sorted_compact(nxe_json_t *js, ngx_pool_t *pool)
         return NULL;
     }
 
-    /* nxe_json_stringify_* returns a non-NUL-terminated ngx_str_t on the
-     * pool.  Callers here expect a NUL-terminated C string (strlen,
-     * ngx_strchr, in-place character stripping), so copy with a trailing
-     * NUL on the same pool. */
-    out = ngx_pnalloc(pool, str->len + 1);
-    if (out == NULL) {
-        return NULL;
-    }
-
-    ngx_memcpy(out, str->data, str->len);
-    out[str->len] = '\0';
-
-    return out;
+    /* nxe_json_stringify_* (nxe-json 0.4.1+) NUL-terminates the buffer at
+     * data[len]; len excludes the terminator.  Callers here treat the
+     * result as a C string (strlen, ngx_strchr, in-place stripping), so
+     * return data directly without copying. */
+    return (char *) str->data;
 }
 
 const char *
