@@ -1,5 +1,17 @@
 # Changelog
 
+## [4796499](../../commit/4796499) - 2026-05-15
+
+### Fixed
+
+- Drop the `(const json_t *) resolved` cast in the `segments != NULL` branch of `validate_requirement`. `ngx_auth_jwt_field_resolve` returns the `nxe_json_t *` opaque handle, so feeding the pointer straight into `json_deep_copy` / `json_dumps` interpreted nxe-json nodes through jansson's `json_t` layout — undefined behaviour today and a runtime trap the moment the nxe-json backend is swapped or instrumented. The branch now mirrors the else branch's serialize-then-parse bridge: `nxe_json_stringify_compact_sorted(resolved, r->pool)` produces a canonical (`JSON_SORT_KEYS | JSON_COMPACT | JSON_ENCODE_ANY`) nul-terminated pool buffer, and `json_loads(..., JSON_DECODE_ANY, NULL)` produces the jansson value passed to `ngx_auth_jwt_operator_validate`. The `jwt_value_malloced` flag and its five `free(jwt_value)` cleanup sites are removed because both branches now hand back pool-owned memory
+
+## [d56a4b9](../../commit/d56a4b9) - 2026-05-15
+
+### Changed
+
+- Bump `nxe-json` submodule to 0.4.1. Guarantees that `nxe_json_stringify_compact` / `_sorted` / `_pretty` return a NUL-terminated buffer (`len` still excludes the terminator), so callers can pass `data` straight to `json_loads`, `strlen`, `%s`, and other C-string APIs without a separate copy. Consumed by the `validate_requirement` segments-branch UB fix
+
 ## [d22e6a1](../../commit/d22e6a1) - 2026-05-15
 
 ### Changed
