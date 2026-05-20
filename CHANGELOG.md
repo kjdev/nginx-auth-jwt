@@ -1,5 +1,11 @@
 # Changelog
 
+## [f90891e](../../commit/f90891e) - 2026-05-20
+
+### Added
+
+- New `auth_jwt_www_authenticate on | off | <string>` directive controlling the `WWW-Authenticate` response header. The DEFAULT mode keeps the existing `Bearer realm="<realm>"[, error="invalid_token"]` output, `off` suppresses the module's header so a named location reached through `error_page 401` can emit its own value without nginx comma-joining both headers, and any other value is compiled as an `ngx_http_complex_value_t` and written verbatim (with variable interpolation) when authentication fails. Unblocks deploying the module in front of an MCP Resource Server where the `WWW-Authenticate` format mandated by MCP Authorization (`resource_metadata`, `scope`, `error="insufficient_scope"`) cannot coexist with the module's realm-only challenge
+
 ## [4880419](../../commit/4880419) - 2026-05-15
 
 ### Changed
