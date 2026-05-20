@@ -46,6 +46,10 @@ static ngx_int_t ngx_http_auth_jwt_decode_token(ngx_http_request_t *r,
 #define NGX_HTTP_AUTH_JWT_CLAIM_VAR_PREFIX "jwt_claim_"
 #define NGX_HTTP_AUTH_JWT_HEADER_VAR_PREFIX "jwt_header_"
 
+#define NGX_HTTP_AUTH_JWT_WWW_AUTH_DEFAULT 0
+#define NGX_HTTP_AUTH_JWT_WWW_AUTH_OFF     1
+#define NGX_HTTP_AUTH_JWT_WWW_AUTH_CUSTOM  2
+
 static ngx_int_t ngx_http_auth_jwt_variable_claim(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data);
 static ngx_int_t ngx_http_auth_jwt_variable_header(ngx_http_request_t *r,
@@ -72,6 +76,8 @@ static char * ngx_http_auth_jwt_conf_set_requirement(ngx_conf_t *cf,
 static char *ngx_http_auth_jwt_conf_set_require_variable(ngx_conf_t *cf,
     ngx_command_t *cmd, void *conf);
 static char *ngx_http_auth_jwt_conf_set_allow_nested(ngx_conf_t *cf,
+    ngx_command_t *cmd, void *conf);
+static char *ngx_http_auth_jwt_conf_set_www_authenticate(ngx_conf_t *cf,
     ngx_command_t *cmd, void *conf);
 
 static ngx_int_t ngx_http_auth_jwt_pre_conf(ngx_conf_t *cf);
@@ -121,6 +127,10 @@ typedef struct {
         char *delimiter;
         char *quote;
     } nested;
+    struct {
+        ngx_int_t                 mode;
+        ngx_http_complex_value_t *value;
+    } www_authenticate;
 } ngx_http_auth_jwt_loc_conf_t;
 
 typedef struct {
@@ -328,6 +338,14 @@ static ngx_command_t ngx_http_auth_jwt_commands[] = {
       NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF
       | NGX_CONF_NOARGS | NGX_CONF_TAKE1 | NGX_CONF_TAKE2,
       ngx_http_auth_jwt_conf_set_allow_nested,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      0,
+      NULL },
+    { ngx_string("auth_jwt_www_authenticate"),
+      NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF |
+      NGX_HTTP_LMT_CONF
+      | NGX_CONF_TAKE1,
+      ngx_http_auth_jwt_conf_set_www_authenticate,
       NGX_HTTP_LOC_CONF_OFFSET,
       0,
       NULL },
@@ -1314,6 +1332,51 @@ ngx_http_auth_jwt_conf_set_allow_nested(ngx_conf_t *cf,
     return NGX_CONF_OK;
 }
 
+
+static char *
+ngx_http_auth_jwt_conf_set_www_authenticate(ngx_conf_t *cf,
+    ngx_command_t *cmd, void *conf)
+{
+    ngx_http_auth_jwt_loc_conf_t *lcf = conf;
+    ngx_str_t *value;
+    ngx_http_compile_complex_value_t ccv;
+
+    if (lcf->www_authenticate.mode != NGX_CONF_UNSET) {
+        return "is duplicate";
+    }
+
+    value = cf->args->elts;
+
+    if (ngx_strcmp(value[1].data, "on") == 0) {
+        lcf->www_authenticate.mode = NGX_HTTP_AUTH_JWT_WWW_AUTH_DEFAULT;
+        return NGX_CONF_OK;
+    }
+
+    if (ngx_strcmp(value[1].data, "off") == 0) {
+        lcf->www_authenticate.mode = NGX_HTTP_AUTH_JWT_WWW_AUTH_OFF;
+        return NGX_CONF_OK;
+    }
+
+    lcf->www_authenticate.value = ngx_palloc(cf->pool,
+                                             sizeof(ngx_http_complex_value_t));
+    if (lcf->www_authenticate.value == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    ngx_memzero(&ccv, sizeof(ngx_http_compile_complex_value_t));
+    ccv.cf = cf;
+    ccv.value = &value[1];
+    ccv.complex_value = lcf->www_authenticate.value;
+
+    if (ngx_http_compile_complex_value(&ccv) != NGX_OK) {
+        return NGX_CONF_ERROR;
+    }
+
+    lcf->www_authenticate.mode = NGX_HTTP_AUTH_JWT_WWW_AUTH_CUSTOM;
+
+    return NGX_CONF_OK;
+}
+
 static ngx_int_t
 ngx_http_auth_jwt_pre_conf(ngx_conf_t *cf)
 {
@@ -1382,6 +1445,9 @@ ngx_http_auth_jwt_create_loc_conf(ngx_conf_t *cf)
     conf->validate.sig = NGX_CONF_UNSET;
     conf->nested.delimiter = NULL;
     conf->nested.quote = NULL;
+
+    conf->www_authenticate.mode = NGX_CONF_UNSET;
+    conf->www_authenticate.value = NULL;
 
     conf->enabled = NGX_CONF_UNSET;
 
@@ -1587,6 +1653,15 @@ ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
         }
     }
 
+    if (conf->www_authenticate.mode == NGX_CONF_UNSET) {
+        if (prev->www_authenticate.mode != NGX_CONF_UNSET) {
+            conf->www_authenticate.mode = prev->www_authenticate.mode;
+            conf->www_authenticate.value = prev->www_authenticate.value;
+        } else {
+            conf->www_authenticate.mode = NGX_HTTP_AUTH_JWT_WWW_AUTH_DEFAULT;
+        }
+    }
+
     return NGX_CONF_OK;
 }
 
@@ -1647,17 +1722,47 @@ ngx_http_auth_jwt_cleanup(void *data)
 
 static ngx_int_t
 ngx_http_auth_jwt_set_bearer_header(ngx_http_request_t *r,
-    ngx_str_t *realm, ngx_int_t error)
+    ngx_http_auth_jwt_loc_conf_t *cf, ngx_int_t error)
 {
     size_t len;
     u_char *bearer, *p;
+    ngx_str_t custom;
+
+    if (cf->www_authenticate.mode == NGX_HTTP_AUTH_JWT_WWW_AUTH_OFF) {
+        return NGX_OK;
+    }
+
+    if (cf->www_authenticate.mode == NGX_HTTP_AUTH_JWT_WWW_AUTH_CUSTOM) {
+        if (ngx_http_complex_value(r, cf->www_authenticate.value, &custom)
+            != NGX_OK)
+        {
+            return NGX_ERROR;
+        }
+
+        if (custom.len == 0) {
+            return NGX_OK;
+        }
+
+        r->headers_out.www_authenticate =
+            ngx_list_push(&r->headers_out.headers);
+        if (r->headers_out.www_authenticate == NULL) {
+            return NGX_ERROR;
+        }
+
+        r->headers_out.www_authenticate->hash = 1;
+        r->headers_out.www_authenticate->next = NULL;
+        ngx_str_set(&r->headers_out.www_authenticate->key, "WWW-Authenticate");
+        r->headers_out.www_authenticate->value = custom;
+
+        return NGX_OK;
+    }
 
     r->headers_out.www_authenticate = ngx_list_push(&r->headers_out.headers);
     if (r->headers_out.www_authenticate == NULL) {
         return NGX_ERROR;
     }
 
-    len = sizeof("Bearer realm=\"\"") - 1 + realm->len;
+    len = sizeof("Bearer realm=\"\"") - 1 + cf->realm.len;
     if (error) {
         len += sizeof(", error=\"invalid_token\"") - 1;
     }
@@ -1670,7 +1775,7 @@ ngx_http_auth_jwt_set_bearer_header(ngx_http_request_t *r,
     }
 
     p = ngx_cpymem(bearer, "Bearer realm=\"", sizeof("Bearer realm=\"") - 1);
-    p = ngx_cpymem(p, realm->data, realm->len);
+    p = ngx_cpymem(p, cf->realm.data, cf->realm.len);
     if (error) {
         p = ngx_cpymem(p, "\", error=\"invalid_token\"",
                        sizeof("\", error=\"invalid_token\"") - 1);
@@ -1694,7 +1799,7 @@ ngx_http_auth_jwt_response(ngx_http_request_t *r,
     ngx_int_t use_error, ngx_int_t code)
 {
     if (ctx->use_bearer) {
-        if (ngx_http_auth_jwt_set_bearer_header(r, &cf->realm,
+        if (ngx_http_auth_jwt_set_bearer_header(r, cf,
                                                 use_error) != NGX_OK)
         {
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
