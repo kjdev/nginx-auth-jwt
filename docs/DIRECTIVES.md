@@ -25,6 +25,7 @@ For complete configuration examples, see [EXAMPLES.md](EXAMPLES.md).
 | [auth_jwt_require_claim](#auth_jwt_require_claim) | http, server, location, limit_except |
 | [auth_jwt_require_header](#auth_jwt_require_header) | http, server, location, limit_except |
 | [auth_jwt_allow_nested](#auth_jwt_allow_nested) | http, server, location |
+| [auth_jwt_www_authenticate](#auth_jwt_www_authenticate) | http, server, location, limit_except |
 
 ### auth_jwt
 
@@ -416,6 +417,50 @@ JWT payload example:
   },
   "grants.key": "dot"
 }
+```
+
+### auth_jwt_www_authenticate
+
+```
+Syntax:  auth_jwt_www_authenticate on | off | string;
+Default: auth_jwt_www_authenticate on;
+Context: http, server, location, limit_except
+```
+
+Controls the `WWW-Authenticate` response header that the module appends to Bearer token requests on authentication failure.
+
+| Value | Behavior |
+|-------|----------|
+| `on` | Default behavior. Appends `Bearer realm="<realm>"`. When the token is invalid, also appends `, error="invalid_token"` |
+| `off` | The module does not append the `WWW-Authenticate` header. Use this when you want full control over the header through `error_page` to a named location with `add_header WWW-Authenticate ...` |
+| any string | Appends the given value as-is as the `WWW-Authenticate` header. Variables can be used |
+
+The header is appended only when the request carries an `Authorization: Bearer ...` header and the response is 401. If the request has no `Bearer ` prefix or the token came from a variable specified by the `token=` parameter, the header is not appended even when `on` is in effect (existing behavior).
+
+Suppressing with `off` and emitting from a named location:
+
+```nginx
+location /test {
+    auth_jwt "test";
+    auth_jwt_key_file /etc/nginx/keys/jwks.json;
+    auth_jwt_www_authenticate off;
+    error_page 401 = @test_unauthorized;
+    proxy_pass http://test_backend;
+}
+
+location @test_unauthorized {
+    internal;
+    add_header WWW-Authenticate
+        'Bearer resource_metadata="$test_metadata_uri", scope="$test_required_scope"'
+        always;
+    return 401;
+}
+```
+
+Emitting directly via a custom string with variables:
+
+```nginx
+auth_jwt_www_authenticate 'Bearer resource_metadata="$test_metadata_uri", scope="$test_required_scope"';
 ```
 
 ## Embedded Variables
