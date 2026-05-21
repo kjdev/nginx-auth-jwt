@@ -1,5 +1,11 @@
 # Changelog
 
+## [a0d109b](../../commit/a0d109b) - 2026-05-21
+
+### Fixed
+
+- Scope the `auth_jwt_require` `error=` parameter to its own directive. Previously the parsed error code was stored on a single location-wide field (`lcf->validate.variable.error`), so writing two directives such as `auth_jwt_require $aud_ok;` followed by `auth_jwt_require $scope_ok error=403;` made the second directive overwrite the first one's default 401 — a failed `$aud_ok` check returned 403, and the merge step inherited the same overwrite across nested locations. The require entries now hold their own `error` field (`ngx_http_auth_jwt_require_variable_t = { complex_value, error_code }`), the parser writes the directive-local `error=` (or the `NGX_HTTP_UNAUTHORIZED` default) onto every entry it pushes for that directive, and the validator returns the failing entry's status instead of a shared value. Single-directive configs keep the existing 401 / explicit `error=` behaviour; only multi-directive setups change. The redundant location-wide `error` field and its `create_loc_conf` / `merge_loc_conf` handling are removed, and the values array merge is updated to the new element type so prepend semantics for inherited directives stay intact
+
 ## [f90891e](../../commit/f90891e) - 2026-05-20
 
 ### Added
