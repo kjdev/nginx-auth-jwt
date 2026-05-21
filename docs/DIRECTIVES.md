@@ -252,6 +252,8 @@ Specifies additional checks for JWT validation. The value can contain text, vari
 
 If any check fails, the 401 error code is returned. The optional `error` parameter allows redefining the error code to any HTTP status code in the range 400-599, excluding nginx internal codes 444 and 499.
 
+The `error` parameter only applies to the variables listed in the same directive. When the same scope contains multiple `auth_jwt_require` directives, each `error` is tracked independently and the response status comes from the directive whose check actually failed (or 401 when that directive omitted `error=`).
+
 ```nginx
 map $jwt_claim_iss $valid_jwt_iss {
     "good" 1;
@@ -261,6 +263,17 @@ location / {
     auth_jwt          "closed site";
     auth_jwt_key_file conf/keys.json;
     auth_jwt_require  $valid_jwt_iss;
+}
+```
+
+To map separate `auth_jwt_require` directives onto distinct HTTP status codes, write each directive individually. A failure of `$valid_aud` returns 401; a failure of `$valid_scope` returns 403.
+
+```nginx
+location / {
+    auth_jwt          "closed site";
+    auth_jwt_key_file conf/keys.json;
+    auth_jwt_require  $valid_aud;
+    auth_jwt_require  $valid_scope error=403;
 }
 ```
 
