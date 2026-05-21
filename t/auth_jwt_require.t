@@ -604,3 +604,122 @@ location / {
   auth_jwt_require error=403;
 }
 --- must_die
+
+=== per-directive error: first default 401 fails, second has error=403
+--- http_config
+include $TEST_NGINX_CONF_DIR/authorized_server.conf;
+map $jwt_claim_iss $valid_jwt_iss {
+  "fail" 1;
+}
+map $jwt_claim_sub $valid_jwt_sub {
+  "test1.identifier" 1;
+}
+--- config
+include $TEST_NGINX_CONF_DIR/jwt.conf;
+location / {
+  auth_jwt "" token=$test1_jwt;
+  auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
+  include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
+  auth_jwt_require $valid_jwt_iss;
+  auth_jwt_require $valid_jwt_sub error=403;
+}
+--- request
+GET /
+--- error_code: 401
+--- error_log: auth_jwt: rejected due to $valid_jwt_iss variable invalid
+
+=== per-directive error: first error=403 fails, second default 401
+--- http_config
+include $TEST_NGINX_CONF_DIR/authorized_server.conf;
+map $jwt_claim_iss $valid_jwt_iss {
+  "fail" 1;
+}
+map $jwt_claim_sub $valid_jwt_sub {
+  "test1.identifier" 1;
+}
+--- config
+include $TEST_NGINX_CONF_DIR/jwt.conf;
+location / {
+  auth_jwt "" token=$test1_jwt;
+  auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
+  include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
+  auth_jwt_require $valid_jwt_iss error=403;
+  auth_jwt_require $valid_jwt_sub;
+}
+--- request
+GET /
+--- error_code: 403
+--- error_log: auth_jwt: rejected due to $valid_jwt_iss variable invalid
+
+=== per-directive error: first error=403 passes, second default 401 fails
+--- http_config
+include $TEST_NGINX_CONF_DIR/authorized_server.conf;
+map $jwt_claim_iss $valid_jwt_iss {
+  "https://test1.issuer.example.com" 1;
+}
+map $jwt_claim_sub $valid_jwt_sub {
+  "fail" 1;
+}
+--- config
+include $TEST_NGINX_CONF_DIR/jwt.conf;
+location / {
+  auth_jwt "" token=$test1_jwt;
+  auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
+  include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
+  auth_jwt_require $valid_jwt_iss error=403;
+  auth_jwt_require $valid_jwt_sub;
+}
+--- request
+GET /
+--- error_code: 401
+--- error_log: auth_jwt: rejected due to $valid_jwt_sub variable invalid
+
+=== per-directive error: first default 401 passes, second error=403 fails
+--- http_config
+include $TEST_NGINX_CONF_DIR/authorized_server.conf;
+map $jwt_claim_iss $valid_jwt_iss {
+  "https://test1.issuer.example.com" 1;
+}
+map $jwt_claim_sub $valid_jwt_sub {
+  "fail" 1;
+}
+--- config
+include $TEST_NGINX_CONF_DIR/jwt.conf;
+location / {
+  auth_jwt "" token=$test1_jwt;
+  auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
+  include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
+  auth_jwt_require $valid_jwt_iss;
+  auth_jwt_require $valid_jwt_sub error=403;
+}
+--- request
+GET /
+--- error_code: 403
+--- error_log: auth_jwt: rejected due to $valid_jwt_sub variable invalid
+
+=== per-directive error: three directives with distinct error= codes
+--- http_config
+include $TEST_NGINX_CONF_DIR/authorized_server.conf;
+map $jwt_claim_iss $valid_jwt_iss {
+  "https://test1.issuer.example.com" 1;
+}
+map $jwt_claim_sub $valid_jwt_sub {
+  "test1.identifier" 1;
+}
+map $jwt_claim_email $valid_jwt_email {
+  "fail" 1;
+}
+--- config
+include $TEST_NGINX_CONF_DIR/jwt.conf;
+location / {
+  auth_jwt "" token=$test1_jwt;
+  auth_jwt_key_file $TEST_NGINX_DATA_DIR/jwks.json;
+  include $TEST_NGINX_CONF_DIR/authorized_proxy.conf;
+  auth_jwt_require $valid_jwt_iss;
+  auth_jwt_require $valid_jwt_sub error=403;
+  auth_jwt_require $valid_jwt_email error=404;
+}
+--- request
+GET /
+--- error_code: 404
+--- error_log: auth_jwt: rejected due to $valid_jwt_email variable invalid
