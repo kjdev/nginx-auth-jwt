@@ -96,6 +96,11 @@ static ngx_int_t ngx_http_auth_jwt_handler(ngx_http_request_t *r,
 static void ngx_http_auth_jwt_cleanup(void *data);
 
 typedef struct {
+    ngx_http_complex_value_t  value;
+    ngx_int_t                 error;
+} ngx_http_auth_jwt_require_variable_t;
+
+typedef struct {
     ngx_int_t    token_variable;
     ngx_array_t *set_vars;
     time_t       leeway;
@@ -119,7 +124,6 @@ typedef struct {
             ngx_array_t *headers;
         } requirement;
         struct {
-            ngx_int_t    error;
             ngx_array_t *values;
         } variable;
     } validate;
@@ -1152,6 +1156,7 @@ ngx_http_auth_jwt_conf_set_require_variable(ngx_conf_t *cf,
     ngx_http_auth_jwt_loc_conf_t *lcf;
     ngx_str_t *value;
     ngx_uint_t i, n;
+    ngx_int_t error_code = NGX_HTTP_UNAUTHORIZED;
     const char *error_with = "error=";
     const size_t error_with_len = sizeof("error=") - 1;
 
@@ -1161,7 +1166,8 @@ ngx_http_auth_jwt_conf_set_require_variable(ngx_conf_t *cf,
 
     if (lcf->validate.variable.values == NULL) {
         lcf->validate.variable.values =
-            ngx_array_create(cf->pool, 4, sizeof(ngx_http_complex_value_t));
+            ngx_array_create(cf->pool, 4,
+                             sizeof(ngx_http_auth_jwt_require_variable_t));
         if (lcf->validate.variable.values == NULL) {
             return "failed to allocate memory for require";
         }
@@ -1173,11 +1179,11 @@ ngx_http_auth_jwt_conf_set_require_variable(ngx_conf_t *cf,
         value[n].data += error_with_len;
         value[n].len -= error_with_len;
 
-        lcf->validate.variable.error = ngx_atoi(value[n].data, value[n].len);
-        if (lcf->validate.variable.error < 400
-            || lcf->validate.variable.error > 599
-            || lcf->validate.variable.error == 444
-            || lcf->validate.variable.error == 499)
+        error_code = ngx_atoi(value[n].data, value[n].len);
+        if (error_code < 400
+            || error_code > 599
+            || error_code == 444
+            || error_code == 499)
         {
             ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
                                "\"%V\" directive error code must be 400-599 "
@@ -1193,7 +1199,7 @@ ngx_http_auth_jwt_conf_set_require_variable(ngx_conf_t *cf,
     }
 
     for (i = 1; i <= n; i++) {
-        ngx_http_complex_value_t *var;
+        ngx_http_auth_jwt_require_variable_t *var;
         ngx_http_compile_complex_value_t ccv;
 
         if (value[i].data[0] != '$') {
@@ -1205,11 +1211,14 @@ ngx_http_auth_jwt_conf_set_require_variable(ngx_conf_t *cf,
             return "failed to allocate item for require";
         }
 
+        ngx_memzero(var, sizeof(ngx_http_auth_jwt_require_variable_t));
+        var->error = error_code;
+
         ngx_memzero(&ccv, sizeof(ngx_http_compile_complex_value_t));
 
         ccv.cf = cf;
         ccv.value = &value[i];
-        ccv.complex_value = var;
+        ccv.complex_value = &var->value;
 
         if (ngx_http_compile_complex_value(&ccv) != NGX_OK) {
             return "no value variables";
@@ -1439,7 +1448,6 @@ ngx_http_auth_jwt_create_loc_conf(ngx_conf_t *cf)
     conf->revocation.kids = NULL;
     conf->validate.requirement.claims = NULL;
     conf->validate.requirement.headers = NULL;
-    conf->validate.variable.error = NGX_CONF_UNSET;
     conf->validate.variable.values = NULL;
     conf->validate.exp = NGX_CONF_UNSET;
     conf->validate.sig = NGX_CONF_UNSET;
@@ -1538,8 +1546,6 @@ ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
         }
     }
 
-    ngx_conf_merge_value(conf->validate.variable.error,
-                         prev->validate.variable.error, NGX_HTTP_UNAUTHORIZED);
     if (conf->validate.variable.values == NULL
         || conf->validate.variable.values->nelts == 0)
     {
@@ -1548,7 +1554,7 @@ ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
                && prev->validate.variable.values->nelts)
     {
         ngx_uint_t i, len, n;
-        ngx_http_complex_value_t *value, *var;
+        ngx_http_auth_jwt_require_variable_t *value, *var;
 
         len = conf->validate.variable.values->nelts;
         n = prev->validate.variable.values->nelts;
@@ -2034,7 +2040,7 @@ ngx_http_auth_jwt_validate_variable(ngx_http_request_t *r,
     ngx_http_auth_jwt_ctx_t *ctx)
 {
     ngx_uint_t i;
-    ngx_http_complex_value_t *var;
+    ngx_http_auth_jwt_require_variable_t *var;
 
     if (!cf->validate.variable.values) {
         return NGX_OK;
@@ -2045,10 +2051,10 @@ ngx_http_auth_jwt_validate_variable(ngx_http_request_t *r,
     for (i = 0; i < cf->validate.variable.values->nelts; i++) {
         ngx_str_t value = ngx_null_string;
 
-        if (ngx_http_complex_value(r, &var[i], &value) != NGX_OK) {
+        if (ngx_http_complex_value(r, &var[i].value, &value) != NGX_OK) {
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                           "auth_jwt: variable specified was not provided: %V",
-                          &(var[i].value));
+                          &(var[i].value.value));
             return NGX_ERROR;
         }
 
@@ -2057,8 +2063,8 @@ ngx_http_auth_jwt_validate_variable(ngx_http_request_t *r,
         {
             ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
                           "auth_jwt: rejected due to %V variable invalid",
-                          &(var[i].value));
-            ctx->status = cf->validate.variable.error;
+                          &(var[i].value.value));
+            ctx->status = var[i].error;
             return NGX_ERROR;
         }
     }
