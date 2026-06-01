@@ -1,5 +1,11 @@
 # Changelog
 
+## [8ecd3e7](../../commit/8ecd3e7) - 2026-06-02
+
+### Fixed
+
+- Stop the master process from leaking the revocation lists across config reloads. The `auth_jwt_revocation_list_sub` / `auth_jwt_revocation_list_kid` lists are jansson objects (malloc-based, not allocated from an nginx pool), so a plain pool teardown never reclaimed them; they were only released by the `exit_process` handler, which runs on worker exit and only ever freed the http-level (main) `loc_conf`. On `nginx -s reload` the master destroys the old cycle's pool (`ngx_init_cycle` -> `ngx_destroy_pool(old_cycle->pool)`), but that does not `json_delete` the lists, so each reload leaked them in a long-lived master — and server / location level lists were missed even in workers. The lists are now freed by a per-`loc_conf` `ngx_pool_cleanup` registered in `create_loc_conf` (used rather than `merge_loc_conf`, which is only invoked with the server / location `loc_conf` as the child, never the http-main one), so the cleanup runs on both worker exit and master old-cycle teardown and covers every block. The now-empty `exit_process` hook and its module slot are removed. Keysets are unchanged: `nxe_jwx_jwks_parse` already registers per-keyset pool cleanups that free each `EVP_PKEY` on the same teardown path. Verified with valgrind (5 reloads + quit): the master reports 0 definitely/indirectly lost, down from 864 bytes in 12 blocks
+
 ## [14d1641](../../commit/14d1641) - 2026-06-02
 
 ### Changed
