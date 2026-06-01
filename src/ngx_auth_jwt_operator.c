@@ -345,7 +345,12 @@ ngx_auth_jwt_op_match(nxe_json_t *input, nxe_json_t *requirement,
 ngx_int_t
 ngx_auth_jwt_operator_validate(char *op,
     nxe_json_t *input, nxe_json_t *requirement,
-    void *regex, ngx_pool_t *pool, ngx_log_t *log)
+#if (NGX_PCRE)
+    ngx_regex_t *regex,
+#else
+    void *regex,
+#endif
+    ngx_pool_t *pool, ngx_log_t *log)
 {
     ngx_flag_t negate = 0;
     char *name;
@@ -394,8 +399,7 @@ ngx_auth_jwt_operator_validate(char *op,
         rc = ngx_auth_jwt_op_in(input, requirement);
 #if (NGX_PCRE)
     } else if (ngx_strcmp(name, NGX_AUTH_JWT_OPERATOR_MATCH) == 0) {
-        rc = ngx_auth_jwt_op_match(input, requirement, (ngx_regex_t *) regex,
-                                   pool, log);
+        rc = ngx_auth_jwt_op_match(input, requirement, regex, pool, log);
 #endif
     } else {
         return NGX_ERROR;

@@ -2251,9 +2251,10 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
         }
 
         {
-            void *regex = NULL;
 #if (NGX_PCRE)
-            regex = requirement[i].regex;
+            ngx_regex_t *regex = requirement[i].regex;
+#else
+            void *regex = NULL;
 #endif
             if (ngx_auth_jwt_operator_validate(
                     requirement[i].operator, jwt_value_json,

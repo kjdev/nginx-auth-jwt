@@ -2,6 +2,9 @@
 #define NGX_AUTH_JWT_OPERATOR_H
 
 #include <ngx_core.h>
+#if (NGX_PCRE)
+#include <ngx_regex.h>
+#endif
 #include "nxe_json.h"
 
 #define NGX_AUTH_JWT_OPERATOR_EQ "eq"
@@ -33,6 +36,11 @@
  */
 ngx_int_t ngx_auth_jwt_operator_validate(char *op,
     nxe_json_t *input, nxe_json_t *requirement,
-    void *regex, ngx_pool_t *pool, ngx_log_t *log);
+#if (NGX_PCRE)
+    ngx_regex_t *regex,
+#else
+    void *regex,
+#endif
+    ngx_pool_t *pool, ngx_log_t *log);
 
 #endif /* NGX_AUTH_JWT_OPERATOR_H */
