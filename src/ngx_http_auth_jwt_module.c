@@ -86,7 +86,7 @@ static void *ngx_http_auth_jwt_create_loc_conf(ngx_conf_t *cf);
 static char *ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent,
     void *child);
 
-static void ngx_http_auth_jwt_exit_process(ngx_cycle_t *cycle);
+static void ngx_http_auth_jwt_revocation_cleanup(void *data);
 
 static ngx_int_t ngx_http_auth_jwt_preaccess_handler(ngx_http_request_t *r);
 static ngx_int_t ngx_http_auth_jwt_access_handler(ngx_http_request_t *r);
@@ -377,7 +377,7 @@ ngx_module_t ngx_http_auth_jwt_module = {
     NULL,                         /* init process */
     NULL,                         /* init thread */
     NULL,                         /* exit thread */
-    ngx_http_auth_jwt_exit_process, /* exit process */
+    NULL,                         /* exit process */
     NULL,                         /* exit master */
     NGX_MODULE_V1_PADDING
 };
@@ -1431,11 +1431,27 @@ static void *
 ngx_http_auth_jwt_create_loc_conf(ngx_conf_t *cf)
 {
     ngx_http_auth_jwt_loc_conf_t *conf;
+    ngx_pool_cleanup_t *cln;
 
     conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_auth_jwt_loc_conf_t));
     if (conf == NULL) {
         return NGX_CONF_ERROR;
     }
+
+    /*
+     * Register the revocation cleanup here, on every loc_conf, rather
+     * than in merge: merge_loc_conf is only invoked with the server /
+     * location loc_conf as the child, never with the http-level
+     * (main) loc_conf, so a directive set directly in the http{} block
+     * would otherwise leak.  The handler reads conf->revocation.* at
+     * teardown, i.e. the final post-merge values.
+     */
+    cln = ngx_pool_cleanup_add(cf->pool, 0);
+    if (cln == NULL) {
+        return NGX_CONF_ERROR;
+    }
+    cln->handler = ngx_http_auth_jwt_revocation_cleanup;
+    cln->data = conf;
 
     conf->token_variable = NGX_CONF_UNSET;
     conf->set_vars = NGX_CONF_UNSET_PTR;
@@ -1671,38 +1687,39 @@ ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
     return NGX_CONF_OK;
 }
 
+/*
+ * Pool cleanup for the jansson revocation lists.
+ *
+ * revocation.subs / revocation.kids are jansson objects (malloc-based,
+ * not pool-allocated), so a plain pool teardown does not reclaim them.
+ * Registering this handler on cf->pool (the cycle pool) frees them both
+ * when a worker exits *and* when the master destroys an old cycle's pool
+ * on config reload (ngx_init_cycle -> ngx_destroy_pool(old_cycle->pool)),
+ * which is what prevents the per-reload leak in a long-lived master.
+ *
+ * A handler is registered for every loc_conf (see create_loc_conf), so
+ * every http/server/location block is covered (the previous exit-process
+ * hook only freed the http-level loc_conf and never ran in the master).
+ * The if-guards make it a no-op for blocks without revocation lists.
+ *
+ * The keystores (conf->key.vars and the nxe-jwx keysets they hold) are
+ * NOT freed here: nxe_jwx_jwks_parse already registers per-keyset pool
+ * cleanups that release each EVP_PKEY on the same teardown path, so they
+ * do not leak across reloads.
+ */
 static void
-ngx_http_auth_jwt_exit_process(ngx_cycle_t *cycle)
+ngx_http_auth_jwt_revocation_cleanup(void *data)
 {
-    ngx_http_auth_jwt_loc_conf_t *conf;
-    ngx_http_conf_ctx_t *ctx;
-    ngx_uint_t index = ngx_http_auth_jwt_module.ctx_index;
+    ngx_http_auth_jwt_loc_conf_t *conf = data;
 
-    if (!cycle->conf_ctx[ngx_http_module.index]) {
-        return;
-    }
-
-    ctx = (ngx_http_conf_ctx_t *) cycle->conf_ctx[ngx_http_module.index];
-    index = ngx_http_auth_jwt_module.ctx_index;
-
-    if (!ctx->loc_conf[index]) {
-        return;
-    }
-
-    conf = (ngx_http_auth_jwt_loc_conf_t *) ctx->loc_conf[index];
-
-    /*
-     * conf->key.vars is allocated from cf->pool; pool teardown frees
-     * the keystore arrays and registers cleanup handlers for each
-     * EVP_PKEY in the underlying nxe-jwx keysets.  Nothing to do here.
-     */
-
-    if (conf && conf->revocation.subs) {
+    if (conf->revocation.subs) {
         json_delete(conf->revocation.subs);
+        conf->revocation.subs = NULL;
     }
 
-    if (conf && conf->revocation.kids) {
+    if (conf->revocation.kids) {
         json_delete(conf->revocation.kids);
+        conf->revocation.kids = NULL;
     }
 }
 
