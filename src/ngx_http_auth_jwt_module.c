@@ -483,9 +483,17 @@ ngx_http_auth_jwt_revocation_tree_cleanup(void *data)
 
 /*
  * Load a revocation list file, parse it into an nxe_json object tree and
- * append the tree to *list (an array of nxe_json_t *).  The directive may
+ * store the tree in *list (an array of nxe_json_t *).  The directive may
  * be repeated, accumulating one tree per file; lookups walk every tree's
- * keys as a union.  Returns 0 on success, non-zero on failure.
+ * keys as a union.
+ *
+ * Trees are stored newest-file-first within a block: on a duplicate key
+ * across repeated directives the validator's first-match then resolves to
+ * the latest file, matching the old json_object_set_new overwrite
+ * (last-file-wins) semantics.  Merge still appends parent trees after the
+ * child's, so child blocks keep precedence over parent blocks.
+ *
+ * Returns 0 on success, non-zero on failure.
  */
 static int
 ngx_http_auth_jwt_fill_revocation_list_by_file(ngx_conf_t *cf,
@@ -565,7 +573,16 @@ ngx_http_auth_jwt_fill_revocation_list_by_file(ngx_conf_t *cf,
     if (slot == NULL) {
         return 1;
     }
-    *slot = tree;
+
+    if ((*list)->nelts > 1) {
+        nxe_json_t **elts = (*list)->elts;
+
+        ngx_memmove(&elts[1], &elts[0],
+                    ((*list)->nelts - 1) * sizeof(nxe_json_t *));
+        elts[0] = tree;
+    } else {
+        *slot = tree;
+    }
 
     return 0;
 }
