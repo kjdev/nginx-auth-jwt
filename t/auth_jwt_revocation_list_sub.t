@@ -115,6 +115,23 @@ location / {
 --- error_log
 auth_jwt: rejected due to sub in revocation list: sub="test2.identifier"
 
+=== test: duplicate sub across repeated directives logs the latest file (last-file-wins)
+--- http_config
+include $TEST_NGINX_CONF_DIR/authorized_server.conf;
+--- config
+include $TEST_NGINX_CONF_DIR/jwt.conf;
+location / {
+  auth_jwt "" token=$test2_jwt;
+  auth_jwt_key_file $TEST_NGINX_DATA_DIR/test1.jwks;
+  auth_jwt_revocation_list_sub $TEST_NGINX_DATA_DIR/revocation_list_sub/revocation_list_sub_dup_a.json;
+  auth_jwt_revocation_list_sub $TEST_NGINX_DATA_DIR/revocation_list_sub/revocation_list_sub_dup_b.json;
+}
+--- request
+    GET /
+--- error_code: 401
+--- error_log
+auth_jwt: rejected due to sub in revocation list: sub="test2.identifier" {"locked_reason":"file_b"}
+
 === limit_except
 --- http_config
 include $TEST_NGINX_CONF_DIR/authorized_server.conf;
