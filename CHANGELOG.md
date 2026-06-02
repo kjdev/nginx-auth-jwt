@@ -1,5 +1,11 @@
 # Changelog
 
+## [42f305c](../../commit/42f305c) - 2026-06-02
+
+### Fixed
+
+- Remove the last direct jansson dependency in the Layer 1 module (`ngx_http_auth_jwt_module.c`) and drop `#include <jansson.h>`. The requirement-comparison path was already on nxe-json; the remaining holdout was the `auth_jwt_revocation_list_sub` / `_kid` handling. The revocation storage is redesigned from a jansson object (`json_t *`) to an `ngx_array_t` of parsed `nxe_json_t *` object trees, one per loaded file. nxe-json 0.5.0 has no object-construction / merge API, so the multi-file accumulation that `json_object_set_new` provided is now a union over the tree array, and membership lookups query each tree with `nxe_json_object_get_ns` (a binary-safe hash lookup via jansson's `json_object_getn`). File loading moves from `json_load_file` to an own read (`ngx_open_file` / `ngx_read_fd`) + `nxe_json_parse`, mirroring the keystore file path. Lookup moves from `json_object_foreach` / `json_dumps` to `nxe_json_object_get_ns` / `nxe_json_stringify_compact`, so key matching moves from a NUL-terminated `ngx_strcmp` linear scan to a binary-safe hash lookup that takes the `ngx_str_t` directly. Merge moves from `json_object_update_missing` / `json_copy` to an array union (child trees first, so a child value wins for a key present in both blocks, matching the previous update-missing semantics). For freeing, instead of a per-`loc_conf` cleanup calling `json_delete`, each tree registers a per-tree pool cleanup (`nxe_json_free`) on `cf->pool` at parse time; every tree is freed exactly once on cycle teardown / reload regardless of how many configs reference it after merge, so sharing tree pointers across configs never double-frees. The `ngx_http_auth_jwt_revocation_cleanup` handler and its `create_loc_conf` registration are removed, subsuming the prior reload-leak fix. Behavior is preserved: an empty `{}` loads as an empty list, a 0-byte or non-object file is rejected at config time, and the rejection log lines keep their `sub="..."` / `kid="..."` form. The log value is now encoded with `JSON_ENCODE_ANY`, so scalar revocation values serialize instead of being dropped
+
 ## [51c0133](../../commit/51c0133) - 2026-06-02
 
 ### Fixed
