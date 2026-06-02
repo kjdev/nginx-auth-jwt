@@ -1,5 +1,11 @@
 # Changelog
 
+## [51c0133](../../commit/51c0133) - 2026-06-02
+
+### Fixed
+
+- Unify the request-time JSON parsing in `ngx_http_auth_jwt_validate_requirement` (the JWT payload and `json=` user input) from jansson's direct `json_loads` / `json_loadb` calls onto `nxe_json_parse_untrusted`, applying the DoS protections (max depth / array size / string length / object keys) that were previously missing. This also removes the cast of `nxe_json_t` (`typedef void`) to `json_t *` and back that only worked by coincidence. Concretely, `jwt_value_json` / `expected_json` are typed as `nxe_json_t *`, and `json_loads` / `json_loadb` -> `nxe_json_parse_untrusted`, `json_stringn` -> `nxe_json_from_string`, `json_is_number` -> `nxe_json_is_integer || nxe_json_is_real`, `json_integer` -> `nxe_json_from_integer`, `json_delete` -> `nxe_json_free`. `ngx_auth_jwt_operator_validate` already takes `nxe_json_t *`, so matching the caller types removes the cast-based type boundary. Behavior is preserved: the non-`json` expected value stays a string node, so the nbf / exp integer rebuild still happens only when `json=` supplies a number. The structural limits now also apply to `json=` expected values, so an extreme structure (for example an array of 101+ elements) is rejected — this is the intended DoS protection
+
 ## [8ecd3e7](../../commit/8ecd3e7) - 2026-06-02
 
 ### Fixed
