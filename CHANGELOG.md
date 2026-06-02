@@ -1,5 +1,11 @@
 # Changelog
 
+## [d2acf47](../../commit/d2acf47) - 2026-06-03
+
+### Fixed
+
+- Restore last-file-wins precedence for a key duplicated across repeated `auth_jwt_revocation_list_sub` / `_kid` directives in the same block. Since the nxe-json migration ([42f305c](../../commit/42f305c)) each file parses into a separate tree appended in load order, and the validator stops at the first matching tree, so a duplicate key resolved to the earliest file — reversing the old `json_object_set_new` overwrite (last-file-wins) semantics and making that commit's "behavior is preserved" claim inaccurate. The revocation value is only used to build the rejection log line; the reject decision is union membership and order-independent, so authentication outcomes were never affected — only the logged value for the rare duplicate-across-files case flipped. `ngx_http_auth_jwt_fill_revocation_list_by_file` now inserts each newly parsed tree at the front of the array (`ngx_memmove` shifting the existing pointers back), so first-match resolves to the latest file again. Merge is unchanged — it still appends parent trees after the child's — so child blocks keep precedence over parent blocks
+
 ## [42f305c](../../commit/42f305c) - 2026-06-02
 
 ### Fixed
