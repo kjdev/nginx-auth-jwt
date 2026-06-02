@@ -2,8 +2,6 @@
 #include <ngx_core.h>
 #include <ngx_http.h>
 
-#include <jansson.h>
-
 #include <nxe_jwx.h>
 
 #include "ngx_auth_jwt_claims.h"
@@ -85,8 +83,10 @@ static ngx_int_t ngx_http_auth_jwt_post_conf(ngx_conf_t *cf);
 static void *ngx_http_auth_jwt_create_loc_conf(ngx_conf_t *cf);
 static char *ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent,
     void *child);
+static ngx_int_t ngx_http_auth_jwt_merge_revocation(ngx_array_t **child,
+    ngx_array_t *parent);
 
-static void ngx_http_auth_jwt_revocation_cleanup(void *data);
+static void ngx_http_auth_jwt_revocation_tree_cleanup(void *data);
 
 static ngx_int_t ngx_http_auth_jwt_preaccess_handler(ngx_http_request_t *r);
 static ngx_int_t ngx_http_auth_jwt_access_handler(ngx_http_request_t *r);
@@ -108,8 +108,8 @@ typedef struct {
     ngx_flag_t   enabled;
     ngx_str_t    realm;
     struct {
-        json_t *subs;
-        json_t *kids;
+        ngx_array_t *subs;          /* array of nxe_json_t * (object trees) */
+        ngx_array_t *kids;          /* array of nxe_json_t * (object trees) */
     } revocation;
     struct {
         ngx_array_t                  *files;
@@ -469,40 +469,103 @@ ngx_http_auth_jwt_key_import_file(ngx_pool_t *pool,
     return rc;
 }
 
-static int
-ngx_http_auth_jwt_fill_list_object_by_file(json_t **object, const char *path)
+/*
+ * Free one parsed revocation tree.  Registered as a per-tree pool cleanup
+ * at parse time so each nxe_json tree is released exactly once when the
+ * configuration pool is destroyed (e.g. on master reload), regardless of
+ * how many loc_conf revocation arrays reference it after merge.
+ */
+static void
+ngx_http_auth_jwt_revocation_tree_cleanup(void *data)
 {
-    json_t *keyval = NULL;
-    const char *key = NULL;
-    json_t *value = NULL;
+    nxe_json_free((nxe_json_t *) data);
+}
+
+/*
+ * Load a revocation list file, parse it into an nxe_json object tree and
+ * append the tree to *list (an array of nxe_json_t *).  The directive may
+ * be repeated, accumulating one tree per file; lookups walk every tree's
+ * keys as a union.  Returns 0 on success, non-zero on failure.
+ */
+static int
+ngx_http_auth_jwt_fill_revocation_list_by_file(ngx_conf_t *cf,
+    ngx_array_t **list, const char *path)
+{
+    ngx_str_t contents;
+    ngx_file_info_t fi;
+    ngx_fd_t fd;
+    ssize_t n;
+    nxe_json_t *tree;
+    nxe_json_t **slot;
+    ngx_pool_cleanup_t *cln;
 
     if (path == NULL) {
         return 1;
     }
 
-    keyval = json_load_file(path, 0, NULL);
-    if (keyval == NULL) {
+    fd = ngx_open_file(path, NGX_FILE_RDONLY, NGX_FILE_OPEN, 0);
+    if (fd == NGX_INVALID_FILE) {
         return 1;
     }
 
-    if (!json_is_object(keyval)) {
-        json_delete(keyval);
+    if (ngx_fd_info(fd, &fi) == NGX_FILE_ERROR) {
+        ngx_close_file(fd);
         return 1;
     }
 
-    if (*object == NULL) {
-        *object = json_object();
+    if (ngx_file_size(&fi) <= 0
+        || (size_t) ngx_file_size(&fi) > NXE_JSON_MAX_SIZE)
+    {
+        ngx_close_file(fd);
+        return 1;
     }
 
-    json_object_foreach((json_t *) keyval, key, value) {
-        if (!key) {
-            continue;
+    contents.len = (size_t) ngx_file_size(&fi);
+    contents.data = ngx_pnalloc(cf->pool, contents.len);
+    if (contents.data == NULL) {
+        ngx_close_file(fd);
+        return 1;
+    }
+
+    n = ngx_read_fd(fd, contents.data, contents.len);
+    ngx_close_file(fd);
+
+    if (n < 0 || (size_t) n != contents.len) {
+        return 1;
+    }
+
+    tree = nxe_json_parse(&contents, cf->pool);
+    if (tree == NULL) {
+        return 1;
+    }
+
+    if (!nxe_json_is_object(tree)) {
+        nxe_json_free(tree);
+        return 1;
+    }
+
+    /* nxe_json trees are malloc-based; tie their lifetime to the config
+     * pool so they are freed on reload (no manual per-conf cleanup). */
+    cln = ngx_pool_cleanup_add(cf->pool, 0);
+    if (cln == NULL) {
+        nxe_json_free(tree);
+        return 1;
+    }
+    cln->handler = ngx_http_auth_jwt_revocation_tree_cleanup;
+    cln->data = tree;
+
+    if (*list == NULL) {
+        *list = ngx_array_create(cf->pool, 1, sizeof(nxe_json_t *));
+        if (*list == NULL) {
+            return 1;
         }
-
-        json_object_set_new(*object, key, json_copy(value));
     }
 
-    json_delete(keyval);
+    slot = ngx_array_push(*list);
+    if (slot == NULL) {
+        return 1;
+    }
+    *slot = tree;
 
     return 0;
 }
@@ -862,10 +925,10 @@ ngx_http_auth_jwt_conf_set_revocation(ngx_conf_t *cf,
 {
     char *file;
     ngx_str_t *value;
-    json_t **revocation;
+    ngx_array_t **revocation;
     char *p = conf;
 
-    revocation = (json_t **) (p + cmd->offset);
+    revocation = (ngx_array_t **) (p + cmd->offset);
 
     value = cf->args->elts;
 
@@ -886,7 +949,9 @@ ngx_http_auth_jwt_conf_set_revocation(ngx_conf_t *cf,
         return "failed to allocate file";
     }
 
-    if (ngx_http_auth_jwt_fill_list_object_by_file(revocation, file) != 0) {
+    if (ngx_http_auth_jwt_fill_revocation_list_by_file(cf, revocation, file)
+        != 0)
+    {
         ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
                            "\"%V\" directive failed to load file: \"%s\"",
                            &cmd->name,file);
@@ -1431,27 +1496,11 @@ static void *
 ngx_http_auth_jwt_create_loc_conf(ngx_conf_t *cf)
 {
     ngx_http_auth_jwt_loc_conf_t *conf;
-    ngx_pool_cleanup_t *cln;
 
     conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_auth_jwt_loc_conf_t));
     if (conf == NULL) {
         return NGX_CONF_ERROR;
     }
-
-    /*
-     * Register the revocation cleanup here, on every loc_conf, rather
-     * than in merge: merge_loc_conf is only invoked with the server /
-     * location loc_conf as the child, never with the http-level
-     * (main) loc_conf, so a directive set directly in the http{} block
-     * would otherwise leak.  The handler reads conf->revocation.* at
-     * teardown, i.e. the final post-merge values.
-     */
-    cln = ngx_pool_cleanup_add(cf->pool, 0);
-    if (cln == NULL) {
-        return NGX_CONF_ERROR;
-    }
-    cln->handler = ngx_http_auth_jwt_revocation_cleanup;
-    cln->data = conf;
 
     conf->token_variable = NGX_CONF_UNSET;
     conf->set_vars = NGX_CONF_UNSET_PTR;
@@ -1620,22 +1669,12 @@ ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
     ngx_conf_merge_value(conf->enabled, prev->enabled, 0);
     ngx_conf_merge_str_value(conf->realm, prev->realm, "");
 
-    if (prev->revocation.subs) {
-        if (conf->revocation.subs) {
-            json_object_update_missing(conf->revocation.subs,
-                                       prev->revocation.subs);
-        } else {
-            conf->revocation.subs = json_copy(prev->revocation.subs);
-        }
-    }
-
-    if (prev->revocation.kids) {
-        if (conf->revocation.kids) {
-            json_object_update_missing(conf->revocation.kids,
-                                       prev->revocation.kids);
-        } else {
-            conf->revocation.kids = json_copy(prev->revocation.kids);
-        }
+    if (ngx_http_auth_jwt_merge_revocation(&conf->revocation.subs,
+                                           prev->revocation.subs) != NGX_OK
+        || ngx_http_auth_jwt_merge_revocation(&conf->revocation.kids,
+                                              prev->revocation.kids) != NGX_OK)
+    {
+        return NGX_CONF_ERROR;
     }
 
     if (prev->key.vars) {
@@ -1688,39 +1727,44 @@ ngx_http_auth_jwt_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
 }
 
 /*
- * Pool cleanup for the jansson revocation lists.
+ * Merge a parent revocation list into the child.
  *
- * revocation.subs / revocation.kids are jansson objects (malloc-based,
- * not pool-allocated), so a plain pool teardown does not reclaim them.
- * Registering this handler on cf->pool (the cycle pool) frees them both
- * when a worker exits *and* when the master destroys an old cycle's pool
- * on config reload (ngx_init_cycle -> ngx_destroy_pool(old_cycle->pool)),
- * which is what prevents the per-reload leak in a long-lived master.
+ * Each list is an array of nxe_json object trees; membership is a union,
+ * so the child's effective list is its own trees followed by the parent's.
+ * Iterating child-first preserves the child's value for a key present in
+ * both blocks (matching the old json_object_update_missing semantics).
  *
- * A handler is registered for every loc_conf (see create_loc_conf), so
- * every http/server/location block is covered (the previous exit-process
- * hook only freed the http-level loc_conf and never ran in the master).
- * The if-guards make it a no-op for blocks without revocation lists.
- *
- * The keystores (conf->key.vars and the nxe-jwx keysets they hold) are
- * NOT freed here: nxe_jwx_jwks_parse already registers per-keyset pool
- * cleanups that release each EVP_PKEY on the same teardown path, so they
- * do not leak across reloads.
+ * Tree ownership stays with the parse-time pool cleanup registered in
+ * ngx_http_auth_jwt_fill_revocation_list_by_file(), so sharing the parent
+ * array pointer (when the child has none) or appending parent tree
+ * pointers never causes a double free on reload.
  */
-static void
-ngx_http_auth_jwt_revocation_cleanup(void *data)
+static ngx_int_t
+ngx_http_auth_jwt_merge_revocation(ngx_array_t **child, ngx_array_t *parent)
 {
-    ngx_http_auth_jwt_loc_conf_t *conf = data;
+    nxe_json_t **src, **slot;
+    ngx_uint_t i;
 
-    if (conf->revocation.subs) {
-        json_delete(conf->revocation.subs);
-        conf->revocation.subs = NULL;
+    if (parent == NULL) {
+        return NGX_OK;
     }
 
-    if (conf->revocation.kids) {
-        json_delete(conf->revocation.kids);
-        conf->revocation.kids = NULL;
+    if (*child == NULL) {
+        *child = parent;
+        return NGX_OK;
     }
+
+    src = parent->elts;
+
+    for (i = 0; i < parent->nelts; i++) {
+        slot = ngx_array_push(*child);
+        if (slot == NULL) {
+            return NGX_ERROR;
+        }
+        *slot = src[i];
+    }
+
+    return NGX_OK;
 }
 
 /*
@@ -2322,27 +2366,26 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
     algorithm = nxe_jwx_token_alg(ctx->jwx_token);
 
     if (cf->revocation.subs != NULL) {
-        json_t *value = NULL;
-        const char *revocation_sub;
-        const char *jwt_sub;
+        nxe_json_t **trees = cf->revocation.subs->elts;
         nxe_json_t *sub_v;
         ngx_str_t sub_str;
+        ngx_str_t empty = ngx_null_string;
+        ngx_uint_t t;
 
         sub_v = nxe_json_object_get(ctx->jwt->payload, "sub");
         if (sub_v == NULL || nxe_json_string(sub_v, &sub_str) != NGX_OK) {
             return NGX_ERROR;
         }
-        jwt_sub = (const char *) sub_str.data;
 
-        json_object_foreach(cf->revocation.subs, revocation_sub, value) {
-            if (ngx_strcmp(jwt_sub, revocation_sub) == 0) {
-                char *msg = json_dumps(value, JSON_COMPACT);
+        for (t = 0; t < cf->revocation.subs->nelts; t++) {
+            nxe_json_t *value = nxe_json_object_get_ns(trees[t], &sub_str);
+
+            if (value != NULL) {
+                ngx_str_t *msg = nxe_json_stringify_compact(value, r->pool);
                 ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
-                              "auth_jwt: rejected due to sub in revocation list"
-                              ": sub=\"%s\" %s", jwt_sub, msg ? msg : "");
-                if (msg) {
-                    free(msg);
-                }
+                              "auth_jwt: rejected due to sub in revocation"
+                              " list: sub=\"%V\" %V", &sub_str,
+                              msg ? msg : &empty);
                 return NGX_ERROR;
             }
         }
@@ -2351,9 +2394,9 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
     kid = nxe_jwx_token_kid(ctx->jwx_token);
 
     if (cf->revocation.kids != NULL) {
-        json_t *value = NULL;
-        const char *revocation_kid;
-        size_t revocation_kid_len;
+        nxe_json_t **trees = cf->revocation.kids->elts;
+        ngx_str_t empty = ngx_null_string;
+        ngx_uint_t t;
 
         // note that revocation_kids turn on kid to required header
         if (kid == NULL || kid->len == 0) {
@@ -2363,19 +2406,17 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
             return NGX_ERROR;
         }
 
-        json_object_foreach(cf->revocation.kids, revocation_kid, value) {
-            revocation_kid_len = ngx_strlen(revocation_kid);
-            if (kid->len == revocation_kid_len
-                && ngx_strncmp(kid->data, revocation_kid, kid->len) == 0)
-            {
-                char *msg = json_dumps(value, JSON_COMPACT);
+        ngx_str_t kid_str = *kid;
+
+        for (t = 0; t < cf->revocation.kids->nelts; t++) {
+            nxe_json_t *value = nxe_json_object_get_ns(trees[t], &kid_str);
+
+            if (value != NULL) {
+                ngx_str_t *msg = nxe_json_stringify_compact(value, r->pool);
                 ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
-                              "auth_jwt: rejected due to kid in revocation list"
-                              ": kid=\"%s\" %s", revocation_kid,
-                              msg ? msg : "");
-                if (msg) {
-                    free(msg);
-                }
+                              "auth_jwt: rejected due to kid in revocation"
+                              " list: kid=\"%V\" %V", kid,
+                              msg ? msg : &empty);
                 return NGX_ERROR;
             }
         }
