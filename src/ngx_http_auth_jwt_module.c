@@ -2115,7 +2115,7 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
 
     for (i = 0; i < requirements->nelts; i++) {
         char *jwt_value = NULL;
-        json_t *jwt_value_json = NULL, *expected_json = NULL;
+        nxe_json_t *jwt_value_json = NULL, *expected_json = NULL;
         ngx_str_t value = ngx_null_string;
         ngx_flag_t json = 0;
 
@@ -2161,11 +2161,11 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
                 return NGX_ERROR;
             }
 
-            /* nxe_json -> 文字列 -> jansson の bridge。resolved を
-             * (json_t *) にキャストして jansson に渡すのは nxe-json の
-             * opaque 契約違反（UB）なので、まず canonical な文字列に
-             * シリアライズしてから json_loads で jansson 値を生成する。
-             * バッファは r->pool 所有で nul 終端済み（nxe-json 0.4.1）。 */
+            /* resolved is a borrowed reference owned by ctx->jwt, so make
+             * an independent owned handle for comparison.  Serialize it to
+             * a canonical string and re-parse with nxe_json_parse_untrusted
+             * to separate ownership while applying the DoS protections.
+             * The buffer is owned by r->pool and is nul-terminated. */
             serialized = nxe_json_stringify_compact_sorted(resolved, r->pool);
             if (serialized == NULL) {
                 ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
@@ -2174,7 +2174,7 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
                 return NGX_ERROR;
             }
             jwt_value = (char *) serialized->data;
-            jwt_value_json = json_loads(jwt_value, JSON_DECODE_ANY, NULL);
+            jwt_value_json = nxe_json_parse_untrusted(serialized, r->pool);
             if (jwt_value_json == NULL) {
                 ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                               "auth_jwt: failed to json load jwt %s: %s",
@@ -2182,6 +2182,8 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
                 return NGX_ERROR;
             }
         } else {
+            ngx_str_t jwt_value_str;
+
             jwt_value = jwt_get_json(ctx->jwt, requirement[i].name,
                                      cf->nested.delimiter, cf->nested.quote,
                                      r->pool);
@@ -2191,7 +2193,9 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
                               requirement_type, requirement[i].name);
                 return NGX_ERROR;
             }
-            jwt_value_json = json_loads(jwt_value, JSON_DECODE_ANY, NULL);
+            jwt_value_str.data = (u_char *) jwt_value;
+            jwt_value_str.len = ngx_strlen(jwt_value);
+            jwt_value_json = nxe_json_parse_untrusted(&jwt_value_str, r->pool);
             if (jwt_value_json == NULL) {
                 ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                               "auth_jwt: failed to json load jwt %s: %s",
@@ -2201,46 +2205,49 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
         }
 
         if (!json) {
-            expected_json = json_stringn((char *) value.data, value.len);
+            expected_json = nxe_json_from_string(&value);
         } else {
-            expected_json = json_loadb((char *) value.data, value.len,
-                                       JSON_DECODE_ANY, NULL);
+            expected_json = nxe_json_parse_untrusted(&value, r->pool);
         }
         if (expected_json == NULL) {
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                           "auth_jwt: failed to json load %s requirement: %s",
                           requirement_type, requirement[i].name);
-            json_delete(jwt_value_json);
+            nxe_json_free(jwt_value_json);
             return NGX_ERROR;
         }
 
         if (jwt_get_json == ngx_auth_jwt_claims_get_grants_json) {
             // NOTE: only claim requirement
             if (ngx_strcmp("nbf", requirement[i].name) == 0) {
-                if (json_is_number(expected_json)) {
+                if (nxe_json_is_integer(expected_json)
+                    || nxe_json_is_real(expected_json))
+                {
                     time_t val = ngx_atotm(value.data, value.len);
-                    json_delete(expected_json);
-                    expected_json = json_integer(val + cf->leeway);
+                    nxe_json_free(expected_json);
+                    expected_json = nxe_json_from_integer(val + cf->leeway);
                     if (expected_json == NULL) {
                         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                                       "auth_jwt: failed to json reload"
                                       " jwt %s requirement: %s",
                                       requirement_type, requirement[i].name);
-                        json_delete(jwt_value_json);
+                        nxe_json_free(jwt_value_json);
                         return NGX_ERROR;
                     }
                 }
             } else if (ngx_strcmp("exp", requirement[i].name) == 0) {
-                if (json_is_number(expected_json)) {
+                if (nxe_json_is_integer(expected_json)
+                    || nxe_json_is_real(expected_json))
+                {
                     time_t val = ngx_atotm(value.data, value.len);
-                    json_delete(expected_json);
-                    expected_json = json_integer(val - cf->leeway);
+                    nxe_json_free(expected_json);
+                    expected_json = nxe_json_from_integer(val - cf->leeway);
                     if (expected_json == NULL) {
                         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                                       "auth_jwt: failed to json reload"
                                       " jwt %s requirement: %s",
                                       requirement_type, requirement[i].name);
-                        json_delete(jwt_value_json);
+                        nxe_json_free(jwt_value_json);
                         return NGX_ERROR;
                     }
 
@@ -2266,14 +2273,14 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
                               ": \"%s\" is not \"%s\" \"%V\"",
                               requirement[i].name, requirement_type, jwt_value,
                               requirement[i].operator, &value);
-                json_delete(jwt_value_json);
-                json_delete(expected_json);
+                nxe_json_free(jwt_value_json);
+                nxe_json_free(expected_json);
                 return NGX_ERROR;
             }
         }
 
-        json_delete(jwt_value_json);
-        json_delete(expected_json);
+        nxe_json_free(jwt_value_json);
+        nxe_json_free(expected_json);
 
         if (jwt_get_json == ngx_auth_jwt_claims_get_headers_json) {
             // NOTE: only header requirement
