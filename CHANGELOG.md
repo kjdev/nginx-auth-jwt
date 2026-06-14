@@ -1,5 +1,11 @@
 # Changelog
 
+## [5b6b1fa](../../commit/5b6b1fa) - 2026-06-15
+
+### Security
+
+- Scope the signature / exp validation relaxation to the request to fix an authentication bypass. `ngx_http_auth_jwt_validate_requirement()` cleared `cf->validate.sig` / `cf->validate.exp` on the worker-shared `loc_conf` when a matching alg or exp requirement was met. Because the `loc_conf` is treated as read-only during request processing, the cleared flags persisted to every later request on that worker until reload. With an alg requirement that allows both `none` and a signing algorithm (e.g. `alg in [RS256, none]`), a single `alg=none` token permanently set `validate.sig` to 0, after which forged RS256 tokens passed signature verification unchecked and bypassed authentication. The fix snapshots `cf->validate.sig` / `exp` into request-scoped ctx fields at the entry of `ngx_http_auth_jwt_validate()` and routes the requirement relaxation and the built-in exp / sig checks through ctx, so the `loc_conf` is never mutated
+
 ## [d2acf47](../../commit/d2acf47) - 2026-06-03
 
 ### Fixed
