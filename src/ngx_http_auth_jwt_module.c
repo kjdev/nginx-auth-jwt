@@ -147,6 +147,10 @@ typedef struct {
     ngx_uint_t                    done;
     ngx_uint_t                    subrequest;
     ngx_flag_t                    verified;
+    struct {
+        ngx_flag_t  sig;
+        ngx_flag_t  exp;
+    } validate;
     u_char                       *token;
     size_t                        token_len;
     nxe_jwx_token_t              *jwx_token;
@@ -2313,7 +2317,8 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
                     }
 
                     // NOTE: do not verify exp if exp requirements are met
-                    cf->validate.exp = 0;
+                    //       (request-scoped: never mutate shared loc_conf)
+                    ctx->validate.exp = 0;
                 }
             }
         }
@@ -2352,7 +2357,8 @@ ngx_http_auth_jwt_validate_requirement(ngx_http_request_t *r,
                     && ngx_strncmp((*algorithm)->data, "none",
                                    (*algorithm)->len) == 0)
                 {
-                    cf->validate.sig = 0;
+                    // NOTE: request-scoped: never mutate shared loc_conf
+                    ctx->validate.sig = 0;
                 }
                 // NOTE: do not verify algorithm if alg requirements are met
                 *algorithm = NULL;
@@ -2376,6 +2382,14 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
                       "auth_jwt: rejected due to missing required arguments");
         return NGX_ERROR;
     }
+
+    /* Snapshot the configured validation flags into request scope.  The
+     * requirement checks below may relax sig/exp verification when a
+     * matching requirement is met, but those relaxations must stay local
+     * to this request: writing back into the shared loc_conf would carry
+     * over to every later request on this worker. */
+    ctx->validate.sig = cf->validate.sig;
+    ctx->validate.exp = cf->validate.exp;
 
     /* nxe_jwx_token_alg / _kid return ngx_str_t whose data is not
      * documented as NUL-terminated; keep the values as ngx_str_t * and
@@ -2450,7 +2464,7 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
     }
 
     /* validate exp claim */
-    if (cf->validate.exp) {
+    if (ctx->validate.exp) {
         time_t exp, now;
 
         exp = ngx_http_auth_jwt_get_grant_time(r, ctx->jwt, "exp", NULL, NULL);
@@ -2492,7 +2506,7 @@ ngx_http_auth_jwt_validate(ngx_http_request_t *r,
     }
 
     /* validate signature */
-    if (!cf->validate.sig) {
+    if (!ctx->validate.sig) {
         ctx->verified = 1;
         return ngx_http_auth_jwt_validate_variable(r, cf, ctx);
     }
