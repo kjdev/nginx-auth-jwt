@@ -174,7 +174,21 @@ Context: http, server, location
 
 Specifies the nginx processing phase in which JWT authentication runs.
 
+When `preaccess` is specified, on successful authentication this module
+continues phase processing instead of skipping the remaining handlers of the
+same PREACCESS phase, after resolving `$jwt_claim_*` and other variables.
+This lets other modules registered in the same PREACCESS phase, such as
+`limit_req`, `limit_conn`, or
+[`nginx-ratelimit`](https://github.com/kjdev/nginx-ratelimit), key on those
+claim variables (authentication is still enforced, since a failed
+authentication finalizes the request with 401/500 as before).
+
 > Note: The ACCESS phase is not executed when called from a subrequest. When called from a subrequest, `auth_jwt_key_request` cannot be processed (nested in-memory subrequest).
+>
+> Note: nginx core's `auth_delay` (brute-force delay for 401 responses) is
+> only implemented in the ACCESS phase checker and does not exist in the
+> PREACCESS phase. Consequently, when `auth_jwt_phase preaccess;` is set,
+> `auth_delay` does not apply to the 401 responses returned by this module.
 
 ### auth_jwt_revocation_list_sub
 
