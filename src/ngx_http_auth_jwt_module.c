@@ -1899,6 +1899,9 @@ ngx_http_auth_jwt_response(ngx_http_request_t *r,
 }
 
 #define ngx_http_auth_jwt_http_ok() ngx_http_auth_jwt_response(r, cf, ctx, 0, \
+                                                               phase == \
+                                                               NGX_HTTP_PREACCESS_PHASE \
+                                                               ? NGX_DECLINED : \
                                                                NGX_OK)
 #define ngx_http_auth_jwt_http_error_without_token() ngx_http_auth_jwt_response( \
             r, cf, ctx, 0, \
