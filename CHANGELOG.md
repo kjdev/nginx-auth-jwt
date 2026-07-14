@@ -5,6 +5,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.14.2] - 2026-07-14
+
 ### Fixed
 
 - Stop `auth_jwt_phase preaccess;` from causing the module's success terminal to skip the rest of the PREACCESS phase. nginx's generic phase checker (`ngx_http_core_generic_phase()`, used for PREACCESS) advances `r->phase_handler` to the next *phase* on `NGX_OK` but only to the next *handler in the same phase* on `NGX_DECLINED`. The module's success path (`ngx_http_auth_jwt_http_ok()`) always returned `NGX_OK` regardless of `phase`, so in preaccess mode a successful request skipped every other PREACCESS handler registered after it — including `limit_req` / `limit_conn` and third-party modules such as [`nginx-ratelimit`](https://github.com/kjdev/nginx-ratelimit) that key on `$jwt_claim_sub` and similar variables populated by this module. Since those handlers never ran, per-identity rate limiting on the resolved JWT claims was silently a no-op whenever `auth_jwt_phase preaccess;` was used. `ngx_http_auth_jwt_http_ok()` now returns `NGX_DECLINED` when `phase == NGX_HTTP_PREACCESS_PHASE` (and `NGX_OK` otherwise), matching the convention used by variable-populating PREACCESS handlers like `realip`. Authentication enforcement is unaffected: a failed authentication still finalizes the request with 401/500 through the existing error path
