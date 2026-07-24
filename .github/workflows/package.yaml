@@ -46,7 +46,7 @@ jobs:
           platforms: linux/${{ matrix.arch }}
           provenance: false
           push: true
-          tags: ghcr.io/${{ env.container }}:${{ github.event_name == 'release' && github.event.release.tag_name || (github.ref_name == github.event.repository.default_branch && 'latest' || format('dev-{0}', github.sha)) }}-${{ matrix.arch }}
+          tags: ghcr.io/${{ env.container }}:${{ github.event_name == 'release' && github.event.release.tag_name || (github.ref_type == 'tag' && github.ref_name || (github.ref_name == github.event.repository.default_branch && 'latest' || format('dev-{0}', github.sha))) }}-${{ matrix.arch }}
     timeout-minutes: 30
     strategy:
       matrix:
@@ -79,7 +79,7 @@ jobs:
             "${CONTAINER}:${TAG}-arm64"
         env:
           CONTAINER: ghcr.io/${{ env.container }}
-          TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || (github.ref_name == github.event.repository.default_branch && 'latest' || format('dev-{0}', github.sha)) }}
+          TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || (github.ref_type == 'tag' && github.ref_name || (github.ref_name == github.event.repository.default_branch && 'latest' || format('dev-{0}', github.sha))) }}
       - name: Clean up
         uses: dataaxiom/ghcr-cleanup-action@cd0cdb900b5dbf3a6f2cc869f0dbb0b8211f50c4 # v1.0.16
         with:
