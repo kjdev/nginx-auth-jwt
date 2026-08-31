@@ -4,3 +4,6 @@
 [submodule "nxe-jwx"]
 	path = nxe-jwx
 	url = https://github.com/kjdev/nxe-jwx.git
+[submodule "nxe-phase"]
+	path = nxe-phase
+	url = https://github.com/kjdev/nxe-phase.git

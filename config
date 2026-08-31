@@ -25,18 +25,30 @@ CFLAGS="$CFLAGS -DNXE_JWX_HAVE_HMAC"
 
 . "$nxe_jwx_dir/config.ngx"
 
+# --- submodule: nxe-phase ---
+nxe_phase_dir="$ngx_addon_dir/nxe-phase"
+nxe_phase_tag="auth_jwt"
+
+if [ ! -f "$nxe_phase_dir/config.ngx" ]; then
+    echo "$0: error: $nxe_phase_dir/config.ngx not found" >&2
+    exit 1
+fi
+
+. "$nxe_phase_dir/config.ngx"
+
 # --- module definition ---
 ngx_module_type=HTTP
-ngx_module_name=ngx_http_auth_jwt_module
-ngx_module_deps="$nxe_json_module_deps $nxe_jwx_module_deps"
-ngx_module_incs="$nxe_json_module_incs $nxe_jwx_module_incs"
+ngx_module_name="ngx_http_auth_jwt_module $nxe_phase_module_name"
+ngx_module_deps="$nxe_json_module_deps $nxe_jwx_module_deps $nxe_phase_module_deps"
+ngx_module_incs="$nxe_json_module_incs $nxe_jwx_module_incs $nxe_phase_module_incs"
 ngx_module_srcs="\
   $nxe_json_module_srcs \
   $nxe_jwx_module_srcs \
+  $nxe_phase_module_srcs \
   $ngx_addon_dir/src/ngx_auth_jwt_claims.c \
   $ngx_addon_dir/src/ngx_auth_jwt_field.c \
   $ngx_addon_dir/src/ngx_auth_jwt_operator.c \
   $ngx_addon_dir/src/ngx_http_auth_jwt_module.c"
-ngx_module_libs="$nxe_json_module_libs $nxe_jwx_module_libs -lssl"
+ngx_module_libs="$nxe_json_module_libs $nxe_jwx_module_libs $nxe_phase_module_libs -lssl"
 
 . auto/module

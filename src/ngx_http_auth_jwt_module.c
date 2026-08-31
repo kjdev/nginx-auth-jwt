@@ -3,6 +3,7 @@
 #include <ngx_http.h>
 
 #include <nxe_jwx.h>
+#include <nxe_phase.h>
 
 #include "ngx_auth_jwt_claims.h"
 #include "ngx_auth_jwt_field.h"
@@ -1493,22 +1494,21 @@ ngx_http_auth_jwt_pre_conf(ngx_conf_t *cf)
 static ngx_int_t
 ngx_http_auth_jwt_post_conf(ngx_conf_t *cf)
 {
-    ngx_http_handler_pt *handler;
-    ngx_http_core_main_conf_t *conf;
-
-    conf = ngx_http_conf_get_module_main_conf(cf, ngx_http_core_module);
-
-    handler = ngx_array_push(&conf->phases[NGX_HTTP_PREACCESS_PHASE].handlers);
-    if (handler == NULL) {
+    if (nxe_phase_add_handler(cf, NGX_HTTP_PREACCESS_PHASE,
+                              NXE_PHASE_PRIO_JWT,
+                              ngx_http_auth_jwt_preaccess_handler,
+                              "auth_jwt") != NGX_OK)
+    {
         return NGX_ERROR;
     }
-    *handler = ngx_http_auth_jwt_preaccess_handler;
 
-    handler = ngx_array_push(&conf->phases[NGX_HTTP_ACCESS_PHASE].handlers);
-    if (handler == NULL) {
+    if (nxe_phase_add_handler(cf, NGX_HTTP_ACCESS_PHASE,
+                              NXE_PHASE_PRIO_JWT,
+                              ngx_http_auth_jwt_access_handler,
+                              "auth_jwt") != NGX_OK)
+    {
         return NGX_ERROR;
     }
-    *handler = ngx_http_auth_jwt_access_handler;
 
     return NGX_OK;
 }
