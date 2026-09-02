@@ -159,7 +159,7 @@ jobs:
           - alpine
           - ubuntu
           - '1.30.4' # stable
-          - '1.31.3' # mainline
+          - '1.31.4' # mainline
     container:
       image: ${{ matrix.nginx == 'alpine' && 'alpine:latest' || null }}
       options: ${{ matrix.nginx == 'alpine' && '--init' || null }}
