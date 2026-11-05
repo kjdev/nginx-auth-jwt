@@ -2028,7 +2028,7 @@ ngx_http_auth_jwt_load_keys(ngx_http_request_t *r,
         ngx_http_post_subrequest_t *ps;
         ngx_http_request_t *sr;
         ngx_uint_t i;
-        ngx_http_auth_jwt_key_request_t *key_request;
+        ngx_http_auth_jwt_key_request_t *key_request, *kr;
 
         flags = NGX_HTTP_SUBREQUEST_WAITED | NGX_HTTP_SUBREQUEST_IN_MEMORY;
 
@@ -2037,17 +2037,23 @@ ngx_http_auth_jwt_load_keys(ngx_http_request_t *r,
         for (i = 0; i < cf->key.requests->nelts; i++) {
             ngx_str_t url;
 
-            key_request[i].ctx = ctx;
-
             ps = ngx_palloc(r->pool, sizeof(ngx_http_post_subrequest_t));
-            if (ps == NULL) {
+            kr = ngx_palloc(r->pool, sizeof(ngx_http_auth_jwt_key_request_t));
+            if (ps == NULL || kr == NULL) {
                 ngx_log_error(NGX_LOG_CRIT, r->connection->log, 0,
                               "auth_jwt: failed to allocate subrequest");
                 continue;
             }
 
+            /*
+             * key_request[] lives in the shared location configuration,
+             * so the per-request context must be kept in a request-scoped copy.
+             */
+            *kr = key_request[i];
+            kr->ctx = ctx;
+
             ps->handler = ngx_http_auth_jwt_key_request_handler;
-            ps->data = &key_request[i];
+            ps->data = kr;
 
             if (key_request[i].index > 0) {
                 ngx_http_variable_value_t *v;
