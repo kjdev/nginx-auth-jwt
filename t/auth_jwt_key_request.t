@@ -746,3 +746,49 @@ include $TEST_NGINX_CONF_DIR/key.conf;
   200,
   200
 ]
+
+=== concurrent requests on the same location do not share request context
+--- http_config
+include $TEST_NGINX_CONF_DIR/authorized_server.conf;
+server {
+  listen 8082;
+  location / {
+    root $TEST_NGINX_DATA_DIR;
+    limit_rate 100;
+  }
+}
+server {
+  listen 8081;
+  include $TEST_NGINX_CONF_DIR/jwt.conf;
+  location ~ ^/(a|b)\z {
+    set $tok $test1_jwt;
+    if ($uri = /b) {
+      set $tok $test2_jwt;
+    }
+    auth_jwt "" token=$tok;
+    auth_jwt_key_request /slow/test1.jwks;
+    auth_jwt_key_request /slow/test2.jwks;
+    rewrite ^ /authorized break;
+    proxy_pass http://127.0.0.1:8080;
+  }
+  location /slow/ {
+    internal;
+    proxy_pass http://127.0.0.1:8082/;
+  }
+}
+--- config
+location = /ssi {
+  default_type text/html;
+  ssi on;
+  return 200 '<!--# include virtual="/fan/a" wait="no" --><!--# include virtual="/fan/b" wait="no" -->';
+}
+location /fan/ {
+  proxy_pass http://127.0.0.1:8081/;
+}
+--- request
+GET /ssi
+--- response_body
+OK
+OK
+--- error_code: 200
+--- timeout: 15
