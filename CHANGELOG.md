@@ -5,6 +5,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Fix a data race in `auth_jwt_key_request` that could leave a request waiting forever. The per-request context was written into the `key_request` array held in the shared location configuration, so concurrent requests to the same location overwrote each other's context and the earlier request never resumed. Each subrequest now receives a copy of the `key_request` entry allocated from the request pool, so the shared configuration is never mutated during request processing
+
+### Dependencies
+
+- Bumped the [nxe-jwx](https://github.com/kjdev/nxe-jwx) submodule from 0.3.0 to 0.4.0
+  - Adds `nxe_jwx_jwks_verify_raw_by_kid()` (detached signature verification keyed by raw JWK `kid`); fixes `verify_raw_by_kid` to try every matching key when a `kid` is duplicated in the keyset
+  - This module's current code paths do not call the new API, so there is no behavioral change
+
 ## [0.15.0] - 2026-09-02
 
 ### Dependencies
@@ -12,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Add the `nxe-phase` submodule and register the PREACCESS/ACCESS phase handlers through `nxe_phase_add_handler()` (priority `NXE_PHASE_PRIO_JWT` = 200) instead of a direct `ngx_array_push()`. nginx's `ngx_http_init_phase_handlers()` walks each phase's handler array tail-to-head, so the previous direct push made this module's execution order relative to other same-phase modules (e.g. an httpsig or OAuth2 bearer-token module) depend on `--add-module` / `load_module` order rather than on `nginx.conf`. With `nxe-phase`, the order is fixed by the shared priority band regardless of build/load order.
 - Bumped the [nxe-jwx](https://github.com/kjdev/nxe-jwx) submodule from 0.2.0 to 0.3.0
   - Adds RFC 7638 JWK thumbprints, `nxe_jwx_jwks_verify_raw()` (detached signature verification), and `nxe_jwx_encode()` (signed JWT issuing); fixes decode size limit enforcement on `nxe_jwx_encode()` output
-  - auth_gate's current code paths do not call the new APIs, so there is no behavioral change
+  - This module's current code paths do not call the new APIs, so there is no behavioral change
 
 ## [0.14.2] - 2026-07-14
 
