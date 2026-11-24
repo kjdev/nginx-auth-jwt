@@ -24,7 +24,7 @@ jobs:
       contents: read
       packages: read
     name: test (${{ matrix.nginx.label }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - if: ${{ matrix.nginx.version != 'alpine' }}
         name: Set up step
