@@ -83,14 +83,20 @@ jobs:
         run: |
           # Download Nginx
           nginx_version="$(nginx -v 2>&1 | sed -e 's/^[^0-9]*//' -e 's/ .*$//')"
-          curl -sL -o "nginx-${nginx_version}.tar.gz" "https://nginx.org/download/nginx-${nginx_version}.tar.gz"
-          tar xf "nginx-${nginx_version}.tar.gz"
+          if [ "${dist}" = "ubuntu" ]; then
+            # Ubuntu patches ngx_http_request_t (e.g. adds 'port'), so build against the distribution source
+            mkdir -p "nginx-${nginx_version}"
+            cp -a /usr/share/nginx/src/. "nginx-${nginx_version}/"
+          else
+            curl -sL -o "nginx-${nginx_version}.tar.gz" "https://nginx.org/download/nginx-${nginx_version}.tar.gz"
+            tar xf "nginx-${nginx_version}.tar.gz"
+          fi
           cd "nginx-${nginx_version}"
           # Configure option
           opt=$(nginx -V 2>&1 | tail -1 | sed -e 's/configure arguments://' -e 's| --add-dynamic-module=[^ ]*||g')
           with_cc_opt=$(echo "${opt}" | grep -e "--with-cc-opt='[^']*'" -o | sed -e "s/^--with-cc-opt='//" -e "s/'$//")
           with_ld_opt=$(echo "${opt}" | grep -e "--with-ld-opt='[^']*'" -o | sed -e "s/^--with-ld-opt='//" -e "s/'$//")
-          opt=$(echo "${opt}" | sed -e "s|--with-cc-opt='[^']*'||" -e "s|--with-ld-opt='[^']*'||" -e 's/--without-engine//')
+          opt=$(echo "${opt}" | sed -e "s|--with-cc-opt='[^']*'||" -e "s|--with-ld-opt='[^']*'||" -e 's/--without-engine//' -e "s|--override-[^=]*=[^ ]*||g")
           # Run build
           # shellcheck disable=SC2086
           ./configure \
@@ -98,7 +104,8 @@ jobs:
             --with-cc-opt="${with_cc_opt} -DNGX_HTTP_HEADERS" \
             --with-ld-opt="${with_ld_opt}" \
             --add-dynamic-module=..
-          make -j
+          # The distribution source has only headers, so build just this module
+          make -f objs/Makefile objs/ngx_http_auth_jwt_module.so
           # Copy module
           if [ "${dist}" = "ubuntu" ]; then
             sudo=sudo
